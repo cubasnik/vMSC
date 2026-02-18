@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <queue>
 #include <tuple>
+#include <set>
 
 vMSC::vMSC(int numVertices) : n(numVertices), totalWeight(0.0) {
     adjList.resize(n);
@@ -88,6 +89,7 @@ std::vector<std::pair<int, int>> vMSC::findvMSC() {
     
     // Build MST
     std::vector<std::pair<int, int>> mstEdges;
+    std::set<std::pair<int, int>> mstEdgeSet; // For O(1) lookup
     double mstWeight = 0.0;
     
     for (const auto& edge : edges) {
@@ -97,6 +99,8 @@ std::vector<std::pair<int, int>> vMSC::findvMSC() {
         
         if (unite(u, v)) {
             mstEdges.push_back({u, v});
+            // Store both orderings for easy lookup
+            mstEdgeSet.insert({std::min(u, v), std::max(u, v)});
             mstWeight += weight;
             if (mstEdges.size() == static_cast<size_t>(n - 1)) break;
         }
@@ -104,7 +108,8 @@ std::vector<std::pair<int, int>> vMSC::findvMSC() {
     
     // For vMSC, we need to add one more edge to create a cycle
     // Find the minimum weight edge that creates a cycle
-    double minCycleEdgeWeight = std::numeric_limits<double>::max();
+    bool foundCycleEdge = false;
+    double minCycleEdgeWeight = 0.0;
     std::pair<int, int> minCycleEdge = {-1, -1};
     
     for (const auto& edge : edges) {
@@ -112,25 +117,19 @@ std::vector<std::pair<int, int>> vMSC::findvMSC() {
         int u = std::get<1>(edge);
         int v = std::get<2>(edge);
         
-        // Check if this edge is not in MST
-        bool inMST = false;
-        for (const auto& mstEdge : mstEdges) {
-            if ((mstEdge.first == u && mstEdge.second == v) ||
-                (mstEdge.first == v && mstEdge.second == u)) {
-                inMST = true;
-                break;
+        // Check if this edge is not in MST using set for O(1) lookup
+        if (mstEdgeSet.find({std::min(u, v), std::max(u, v)}) == mstEdgeSet.end()) {
+            if (!foundCycleEdge || weight < minCycleEdgeWeight) {
+                minCycleEdgeWeight = weight;
+                minCycleEdge = {u, v};
+                foundCycleEdge = true;
             }
-        }
-        
-        if (!inMST && weight < minCycleEdgeWeight) {
-            minCycleEdgeWeight = weight;
-            minCycleEdge = {u, v};
         }
     }
     
     // Construct vMSC: MST + one edge to form cycle
     mscEdges = mstEdges;
-    if (minCycleEdge.first != -1) {
+    if (foundCycleEdge) {
         mscEdges.push_back(minCycleEdge);
         totalWeight = mstWeight + minCycleEdgeWeight;
     } else {
