@@ -89,7 +89,7 @@ std::vector<std::pair<int, int>> vMSC::findvMSC() {
     
     // Build MST
     std::vector<std::pair<int, int>> mstEdges;
-    std::set<std::pair<int, int>> mstEdgeSet; // For O(1) lookup
+    std::set<std::pair<int, int>> mstEdgeSet; // For O(log E) lookup
     double mstWeight = 0.0;
     
     for (const auto& edge : edges) {
@@ -108,6 +108,7 @@ std::vector<std::pair<int, int>> vMSC::findvMSC() {
     
     // For vMSC, we need to add one more edge to create a cycle
     // Find the minimum weight edge that creates a cycle
+    // Since edges are sorted, the first non-MST edge has minimum weight
     bool foundCycleEdge = false;
     double minCycleEdgeWeight = 0.0;
     std::pair<int, int> minCycleEdge = {-1, -1};
@@ -117,13 +118,12 @@ std::vector<std::pair<int, int>> vMSC::findvMSC() {
         int u = std::get<1>(edge);
         int v = std::get<2>(edge);
         
-        // Check if this edge is not in MST using set for O(1) lookup
+        // Check if this edge is not in MST using set for O(log E) lookup
         if (mstEdgeSet.find({std::min(u, v), std::max(u, v)}) == mstEdgeSet.end()) {
-            if (!foundCycleEdge || weight < minCycleEdgeWeight) {
-                minCycleEdgeWeight = weight;
-                minCycleEdge = {u, v};
-                foundCycleEdge = true;
-            }
+            minCycleEdgeWeight = weight;
+            minCycleEdge = {u, v};
+            foundCycleEdge = true;
+            break; // First non-MST edge is minimum due to sorted order
         }
     }
     
