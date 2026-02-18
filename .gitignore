@@ -36,6 +36,7 @@
 *.exe
 *.out
 *.app
+vmsc
 
 # debug information files
 *.dwo
