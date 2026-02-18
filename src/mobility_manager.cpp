@@ -30,7 +30,6 @@ bool MobilityManager::completeHandover(const std::string& imsi) {
         return false;
     }
     
-    it->second.isCompleted = true;
     std::cout << "Handover completed for IMSI=" << imsi << std::endl;
     
     activeHandovers.erase(it);
@@ -40,8 +39,7 @@ bool MobilityManager::completeHandover(const std::string& imsi) {
 bool MobilityManager::isHandoverInProgress(const std::string& imsi) const {
     std::lock_guard<std::mutex> lock(mutex_);
     
-    auto it = activeHandovers.find(imsi);
-    return it != activeHandovers.end() && !it->second.isCompleted;
+    return activeHandovers.find(imsi) != activeHandovers.end();
 }
 
 void MobilityManager::printHandovers() const {

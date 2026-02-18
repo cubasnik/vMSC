@@ -43,17 +43,6 @@ bool SubscriberManager::updateLocation(const std::string& imsi, const std::strin
     return true;
 }
 
-Subscriber* SubscriberManager::getSubscriber(const std::string& imsi) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    
-    auto it = subscribers.find(imsi);
-    if (it == subscribers.end()) {
-        return nullptr;
-    }
-    
-    return &it->second;
-}
-
 bool SubscriberManager::isSubscriberActive(const std::string& imsi) const {
     std::lock_guard<std::mutex> lock(mutex_);
     

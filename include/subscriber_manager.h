@@ -26,7 +26,6 @@ public:
     bool addSubscriber(const std::string& imsi, const std::string& msisdn);
     bool authenticateSubscriber(const std::string& imsi);
     bool updateLocation(const std::string& imsi, const std::string& location);
-    Subscriber* getSubscriber(const std::string& imsi);
     bool isSubscriberActive(const std::string& imsi) const;
     void printSubscribers() const;
 };
