@@ -9,10 +9,9 @@ struct HandoverInfo {
     std::string imsi;
     std::string sourceLac;
     std::string targetLac;
-    bool isCompleted;
     
     HandoverInfo(const std::string& imsi, const std::string& src, const std::string& tgt)
-        : imsi(imsi), sourceLac(src), targetLac(tgt), isCompleted(false) {}
+        : imsi(imsi), sourceLac(src), targetLac(tgt) {}
 };
 
 class MobilityManager {

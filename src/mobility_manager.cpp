@@ -48,15 +48,13 @@ void MobilityManager::printHandovers() const {
     std::cout << "\n=== Active Handovers ===" << std::endl;
     std::cout << std::setw(20) << "IMSI" 
               << std::setw(15) << "Source LAC" 
-              << std::setw(15) << "Target LAC" 
-              << std::setw(12) << "Completed" << std::endl;
-    std::cout << std::string(62, '-') << std::endl;
+              << std::setw(15) << "Target LAC" << std::endl;
+    std::cout << std::string(50, '-') << std::endl;
     
     for (const auto& pair : activeHandovers) {
         const auto& ho = pair.second;
         std::cout << std::setw(20) << ho.imsi
                   << std::setw(15) << ho.sourceLac
-                  << std::setw(15) << ho.targetLac
-                  << std::setw(12) << (ho.isCompleted ? "Yes" : "No") << std::endl;
+                  << std::setw(15) << ho.targetLac << std::endl;
     }
 }
