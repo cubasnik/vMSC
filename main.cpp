@@ -3635,6 +3635,91 @@ static struct msgb *generate_m3ua_beat_ack() {
     return msg;
 }
 
+// ── P22: M3UA SSNM — Destination State Messages (RFC 4666 §3.4) ─────────────
+// Class=0x02 (SSNM), Affected Point Code param: Tag=0x012D, Len=8
+//   Value: mask(1 byte, 0x00) + reserved(2 bytes) + PC_BE(3 bytes) — actually
+//   RFC 4666 §3.4.1: the Affected Point Code parameter is 4-byte aligned:
+//     Tag=0x012D, Length=0x0008, mask=0x00, reserved=0x00, PC[3 BE]
+//   (one Affected PC entry = 4 bytes: mask(1)+PC[3 BE])
+static struct msgb *generate_m3ua_duna(uint32_t aff_pc) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "M3UA DUNA");
+    if (!msg) return nullptr;
+    uint8_t *lp = m3ua_put_header(msg, 0x02, 0x01);  // SSNM Class=2 Type=1
+    // Affected Point Code param: Tag=0x012D, Len=8, mask(1)+PC(3 BE)
+    uint8_t aff[4] = { 0x00,
+                       (uint8_t)((aff_pc >> 16) & 0xFF),
+                       (uint8_t)((aff_pc >>  8) & 0xFF),
+                       (uint8_t)( aff_pc        & 0xFF) };
+    uint16_t tag = 0x012D;
+    uint16_t plen = 8;  // tag(2)+len(2)+value(4)
+    uint8_t *p = msgb_put(msg, 8);
+    p[0] = (tag >> 8) & 0xFF;  p[1] = tag & 0xFF;
+    p[2] = (plen >> 8) & 0xFF; p[3] = plen & 0xFF;
+    memcpy(p + 4, aff, 4);
+    m3ua_fix_len(msg, lp);
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e M3UA DUNA (Destination Unavailable)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Class: " << COLOR_GREEN << "0x02 (SSNM)" << COLOR_RESET
+              << COLOR_BLUE << "  Type: " << COLOR_GREEN << "0x01" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Affected PC: " << COLOR_GREEN << aff_pc << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex DUNA:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
+    std::cout << "\n\n";
+    return msg;
+}
+
+static struct msgb *generate_m3ua_dava(uint32_t aff_pc) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "M3UA DAVA");
+    if (!msg) return nullptr;
+    uint8_t *lp = m3ua_put_header(msg, 0x02, 0x02);  // SSNM Class=2 Type=2
+    uint8_t aff[4] = { 0x00,
+                       (uint8_t)((aff_pc >> 16) & 0xFF),
+                       (uint8_t)((aff_pc >>  8) & 0xFF),
+                       (uint8_t)( aff_pc        & 0xFF) };
+    uint16_t tag = 0x012D;
+    uint16_t plen = 8;
+    uint8_t *p = msgb_put(msg, 8);
+    p[0] = (tag >> 8) & 0xFF;  p[1] = tag & 0xFF;
+    p[2] = (plen >> 8) & 0xFF; p[3] = plen & 0xFF;
+    memcpy(p + 4, aff, 4);
+    m3ua_fix_len(msg, lp);
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e M3UA DAVA (Destination Available)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Class: " << COLOR_GREEN << "0x02 (SSNM)" << COLOR_RESET
+              << COLOR_BLUE << "  Type: " << COLOR_GREEN << "0x02" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Affected PC: " << COLOR_GREEN << aff_pc << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex DAVA:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
+    std::cout << "\n\n";
+    return msg;
+}
+
+static struct msgb *generate_m3ua_daud(uint32_t aff_pc) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "M3UA DAUD");
+    if (!msg) return nullptr;
+    uint8_t *lp = m3ua_put_header(msg, 0x02, 0x03);  // SSNM Class=2 Type=3
+    uint8_t aff[4] = { 0x00,
+                       (uint8_t)((aff_pc >> 16) & 0xFF),
+                       (uint8_t)((aff_pc >>  8) & 0xFF),
+                       (uint8_t)( aff_pc        & 0xFF) };
+    uint16_t tag = 0x012D;
+    uint16_t plen = 8;
+    uint8_t *p = msgb_put(msg, 8);
+    p[0] = (tag >> 8) & 0xFF;  p[1] = tag & 0xFF;
+    p[2] = (plen >> 8) & 0xFF; p[3] = plen & 0xFF;
+    memcpy(p + 4, aff, 4);
+    m3ua_fix_len(msg, lp);
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e M3UA DAUD (Destination State Audit)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Class: " << COLOR_GREEN << "0x02 (SSNM)" << COLOR_RESET
+              << COLOR_BLUE << "  Type: " << COLOR_GREEN << "0x03" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Affected PC: " << COLOR_GREEN << aff_pc << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex DAUD:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
+    std::cout << "\n\n";
+    return msg;
+}
+
 // ──────────────────────────────────────────────────────────────
 // Вспомогательная функция: кодирование текста в GSM-7 (3GPP TS 23.038 §6.2.1)
 // in: ASCII-строка до 160 символов
@@ -5609,6 +5694,57 @@ static struct msgb *generate_dtap_mm_cm_service_acc() {
     return msg;
 }
 
+// ── P21-R: DTAP MM CM Service Reject (3GPP TS 24.008 §9.2.10) ───────────────
+// MSC → MS   PD=MM(0x05), MT=0x22
+// Reject Cause IE: tag=0x08, len=1
+//   0x04=IMSI unknown in HLR  0x06=illegal ME  0x0C=PLMN not allowed
+//   0x11=network failure       0x16=congestion
+static struct msgb *generate_dtap_mm_cm_service_reject(uint8_t cause) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP CM SrvRej");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = GSM48_PDISC_MM;  // PD = MM 0x05
+    *(msgb_put(msg, 1)) = 0x22;            // MT = CM Service Reject
+    // Reject Cause IE (mandatory, non-TLV format in 24.008 §10.5.3.11)
+    *(msgb_put(msg, 1)) = cause;
+    const char *cause_name =
+        (cause == 0x04) ? "IMSI unknown in HLR" :
+        (cause == 0x06) ? "Illegal ME" :
+        (cause == 0x0C) ? "PLMN not allowed" :
+        (cause == 0x11) ? "Network failure" :
+        (cause == 0x16) ? "Congestion" : "unknown";
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e DTAP CM Service Reject" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Cause:  " << COLOR_GREEN << std::hex << std::showbase
+              << (int)cause << " (" << cause_name << ")" << std::dec << std::noshowbase
+              << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// ── P21-R: DTAP MM IMSI Detach Indication (3GPP TS 24.008 §9.2.6) ───────────
+// MS → MSC   PD=MM(0x05), MT=0x01
+// Mobile Identity IE (IMSI): tag=0x17, len, type_byte, BCD...
+static struct msgb *generate_dtap_mm_imsi_detach(const char *imsi_str) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP IMSI Detach");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = GSM48_PDISC_MM;  // PD = MM 0x05
+    *(msgb_put(msg, 1)) = 0x01;            // MT = IMSI Detach Indication
+    // MS Classmark 1 IE (non-TLV, 1 byte mandatory before Mobile ID)
+    *(msgb_put(msg, 1)) = 0x50;  // Classmark1: RF power class 2, Rev1 (typical)
+    // Mobile Identity IE (IMSI): tag=0x17
+    *(msgb_put(msg, 1)) = 0x17;
+    uint8_t bcd[9] = {};
+    int imsi_len = generate_bcd_number(bcd, sizeof(bcd), imsi_str);
+    if (imsi_len <= 0) { msgb_free(msg); return nullptr; }
+    // type nibble 0x9 = IMSI, odd-length indicator in MSB nibble of first BCD byte
+    *(msgb_put(msg, 1)) = (uint8_t)(imsi_len + 1);  // len: type_byte + BCD bytes
+    *(msgb_put(msg, 1)) = (uint8_t)((0x01 << 4) | 0x09);  // odd nibble | IMSI type
+    memcpy(msgb_put(msg, imsi_len), bcd, imsi_len);
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e DTAP IMSI Detach Indication" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  IMSI:   " << COLOR_GREEN << imsi_str << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
 // DTAP CC Setup MO (3GPP TS 24.008 §9.3.23.1)
 // MS → MSC   PD=CC(0x03), TI=0, MT=0x05
 // Содержит: Bearer Capability IE + Called Party BCD Number IE
@@ -5939,6 +6075,11 @@ int main(int argc, char** argv) {
     bool     do_m3ua_aspia_ack = false; // ASPIA-ACK ASPTM Class=4 Type=4
     bool     do_m3ua_beat      = false; // BEAT      ASPSM Class=3 Type=3
     bool     do_m3ua_beat_ack  = false; // BEAT-ACK  ASPSM Class=3 Type=6
+    // P22: M3UA SSNM (RFC 4666 §3.4)
+    bool     do_m3ua_duna      = false; // DUNA  SSNM Class=2 Type=1  Dest. Unavailable
+    bool     do_m3ua_dava      = false; // DAVA  SSNM Class=2 Type=2  Dest. Available
+    bool     do_m3ua_daud      = false; // DAUD  SSNM Class=2 Type=3  Dest. State Audit
+    uint32_t m3ua_aff_pc_param = 0;    // --m3ua-aff-pc: Affected Point Code
     // SMS / USSD (P4)
     bool     do_map_mo_fsm = false;    // MAP MO-ForwardSM (opCode=46)            (C-interface)
     bool     do_map_mt_fsm = false;    // MAP MT-ForwardSM (opCode=44)            (C-interface)
@@ -6003,6 +6144,10 @@ int main(int argc, char** argv) {
     // P9: A-interface DTAP CC / MM — управление вызовом
     bool     do_dtap_cm_srv_req     = false;  // MM CM Service Request   0x24
     bool     do_dtap_cm_srv_acc     = false;  // MM CM Service Accept    0x21
+    // P21-R: DTAP MM CM Service Reject + IMSI Detach (3GPP TS 24.008)
+    bool     do_dtap_cm_srv_rej     = false;  // MM CM Service Reject    0x22
+    bool     do_dtap_imsi_detach_a  = false;  // MM IMSI Detach Indication 0x01
+    uint8_t  cm_reject_cause_param  = 0x06;   // --cm-reject-cause: 0x04/0x06/0x0C/0x11
     bool     do_dtap_cc_setup_mo    = false;  // CC Setup (MO)           0x05
     bool     do_dtap_cc_setup_mt    = false;  // CC Setup (MT)           0x05
     bool     do_dtap_cc_call_proc   = false;  // CC Call Proceeding      0x02
@@ -6750,6 +6895,21 @@ int main(int argc, char** argv) {
             do_m3ua_beat_ack = true;
             do_lu = false;  do_paging = false;
         }
+        // ── P22: M3UA SSNM Destination State ────────────────────────────────
+        else if (arg == "--send-m3ua-duna") {
+            do_m3ua_duna = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-m3ua-dava") {
+            do_m3ua_dava = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-m3ua-daud") {
+            do_m3ua_daud = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--m3ua-aff-pc" && i + 1 < argc)
+            m3ua_aff_pc_param = (uint32_t)std::stoul(argv[++i], nullptr, 0);
         // ── P20: ISUP Circuit Group + MAP Password/ATI ────────────────────────────────
         else if (arg == "--send-isup-cgb") {
             do_isup_cgb = true;
@@ -6890,6 +7050,17 @@ int main(int argc, char** argv) {
         }
         else if (arg == "--send-dtap-cm-srv-acc") {
             do_dtap_cm_srv_acc = true;
+            do_lu = false;  do_paging = false;
+        }
+        // P21-R: DTAP CM Service Reject + IMSI Detach Indication
+        else if (arg == "--send-dtap-cm-srv-rej") {
+            do_dtap_cm_srv_rej = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--cm-reject-cause" && i + 1 < argc)
+            cm_reject_cause_param = (uint8_t)std::stoul(argv[++i], nullptr, 0);
+        else if (arg == "--send-dtap-imsi-detach-a") {
+            do_dtap_imsi_detach_a = true;
             do_lu = false;  do_paging = false;
         }
         else if (arg == "--send-dtap-cc-setup-mo") {
@@ -8735,7 +8906,7 @@ int main(int argc, char** argv) {
             if (send_udp && !remote_ip.empty())
                 send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
             else if (send_udp)
-                std::cerr << COLOR_YELLOW << "\u26a0 M3UA: remote_ip \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\n" << COLOR_RESET;
+                std::cerr << COLOR_YELLOW << "⚠ M3UA: remote_ip не задан\n" << COLOR_RESET;
             msgb_free(asp_msg);
         }
     }
@@ -8749,7 +8920,7 @@ int main(int argc, char** argv) {
             if (send_udp && !remote_ip.empty())
                 send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
             else if (send_udp)
-                std::cerr << COLOR_YELLOW << "\u26a0 M3UA: remote_ip \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\n" << COLOR_RESET;
+                std::cerr << COLOR_YELLOW << "⚠ M3UA: remote_ip не задан\n" << COLOR_RESET;
             msgb_free(asp_msg);
         }
     }
@@ -8763,7 +8934,7 @@ int main(int argc, char** argv) {
             if (send_udp && !remote_ip.empty())
                 send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
             else if (send_udp)
-                std::cerr << COLOR_YELLOW << "\u26a0 M3UA: remote_ip \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\n" << COLOR_RESET;
+                std::cerr << COLOR_YELLOW << "⚠ M3UA: remote_ip не задан\n" << COLOR_RESET;
             msgb_free(asp_msg);
         }
     }
@@ -8777,7 +8948,7 @@ int main(int argc, char** argv) {
             if (send_udp && !remote_ip.empty())
                 send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
             else if (send_udp)
-                std::cerr << COLOR_YELLOW << "\u26a0 M3UA: remote_ip \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\n" << COLOR_RESET;
+                std::cerr << COLOR_YELLOW << "⚠ M3UA: remote_ip не задан\n" << COLOR_RESET;
             msgb_free(asp_msg);
         }
     }
@@ -8791,7 +8962,7 @@ int main(int argc, char** argv) {
             if (send_udp && !remote_ip.empty())
                 send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
             else if (send_udp)
-                std::cerr << COLOR_YELLOW << "\u26a0 M3UA: remote_ip \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\n" << COLOR_RESET;
+                std::cerr << COLOR_YELLOW << "⚠ M3UA: remote_ip не задан\n" << COLOR_RESET;
             msgb_free(asp_msg);
         }
     }
@@ -8805,7 +8976,7 @@ int main(int argc, char** argv) {
             if (send_udp && !remote_ip.empty())
                 send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
             else if (send_udp)
-                std::cerr << COLOR_YELLOW << "\u26a0 M3UA: remote_ip \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\n" << COLOR_RESET;
+                std::cerr << COLOR_YELLOW << "⚠ M3UA: remote_ip не задан\n" << COLOR_RESET;
             msgb_free(asp_msg);
         }
     }
@@ -9009,6 +9180,50 @@ int main(int argc, char** argv) {
             msgb_free(asp_msg);
         }
     }
+
+    // ── P22: M3UA SSNM Destination State ────────────────────────────────────
+    if (do_m3ua_duna) {
+        print_section_header("[M3UA DUNA]", "M3UA SSNM  (Destination Unavailable, Class=2 Type=1)");
+        std::cout << "\n";
+        uint32_t aff_pc = m3ua_aff_pc_param ? m3ua_aff_pc_param : (uint32_t)m3ua_dpc;
+        struct msgb *asp_msg = generate_m3ua_duna(aff_pc);
+        if (asp_msg) {
+            if (send_udp && !remote_ip.empty())
+                send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
+            else if (send_udp)
+                std::cerr << COLOR_YELLOW << "⚠ M3UA: remote_ip не задан\n" << COLOR_RESET;
+            msgb_free(asp_msg);
+        }
+    }
+
+    if (do_m3ua_dava) {
+        print_section_header("[M3UA DAVA]", "M3UA SSNM  (Destination Available, Class=2 Type=2)");
+        std::cout << "\n";
+        uint32_t aff_pc = m3ua_aff_pc_param ? m3ua_aff_pc_param : (uint32_t)m3ua_dpc;
+        struct msgb *asp_msg = generate_m3ua_dava(aff_pc);
+        if (asp_msg) {
+            if (send_udp && !remote_ip.empty())
+                send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
+            else if (send_udp)
+                std::cerr << COLOR_YELLOW << "⚠ M3UA: remote_ip не задан\n" << COLOR_RESET;
+            msgb_free(asp_msg);
+        }
+    }
+
+    if (do_m3ua_daud) {
+        print_section_header("[M3UA DAUD]", "M3UA SSNM  (Destination State Audit, Class=2 Type=3)");
+        std::cout << "\n";
+        uint32_t aff_pc = m3ua_aff_pc_param ? m3ua_aff_pc_param : (uint32_t)m3ua_dpc;
+        struct msgb *asp_msg = generate_m3ua_daud(aff_pc);
+        if (asp_msg) {
+            if (send_udp && !remote_ip.empty())
+                send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
+            else if (send_udp)
+                std::cerr << COLOR_YELLOW << "⚠ M3UA: remote_ip не задан\n" << COLOR_RESET;
+            msgb_free(asp_msg);
+        }
+    }
+
 
     // ── A-interface: DTAP Authentication Request ─────────────────────────────
     if (do_dtap_auth_req) {
@@ -9439,6 +9654,16 @@ int main(int argc, char** argv) {
     if (do_dtap_cm_srv_acc)
         send_dtap_a(generate_dtap_mm_cm_service_acc(),
                     "[MM CM Service Accept]", "A-interface  (MSC → MS)");
+
+    // P21-R: DTAP CM Service Reject + IMSI Detach Indication (A-interface)
+    if (do_dtap_cm_srv_rej)
+        send_dtap_a(generate_dtap_mm_cm_service_reject(cm_reject_cause_param),
+                    "[MM CM Service Reject]", "A-interface  (MSC → MS via BSC)");
+
+    if (do_dtap_imsi_detach_a)
+        send_dtap_a(generate_dtap_mm_imsi_detach(imsi.c_str()),
+                    "[MM IMSI Detach Indication]", "A-interface  (MS → MSC via BSC)");
+
 
     if (do_dtap_cc_setup_mo)
         send_dtap_a(generate_dtap_cc_setup_mo(ti_param, msisdn.c_str()),
