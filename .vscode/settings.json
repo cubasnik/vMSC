@@ -1,0 +1,5 @@
+{
+    "github.copilot.chat.codeGeneration.instructions": [
+        { "file": ".vscode/copilot-instructions.md" }
+    ]
+}

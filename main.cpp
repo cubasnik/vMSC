@@ -36,7 +36,6 @@ const char *COLOR_MAGENTA   = "\033[1;35m";
 
 // Глобальные счетчики для SCCP
 static uint32_t sccp_src_local_ref = 0x00000001;
-static uint32_t sccp_dst_local_ref = 0x00000000;
 
 // Структура конфигурации
 // VLR — запись о зарегистрированном абоненте (в памяти + vmsc_vlr.conf)
@@ -837,12 +836,6 @@ static bool save_config(const std::string &path, const Config &cfg) {
     file << "\n" << SEP;
 
     return true;
-}
-
-// Получение пути к конфигу по умолчанию
-static std::string get_default_config_path() {
-    // Приоритет: текущая директория, затем домашняя
-    return "./vmsc.conf";
 }
 
 // Оборачивание SCCP в M3UA DATA message (SIGTRAN)
@@ -11937,7 +11930,6 @@ int main(int argc, char** argv) {
     }
 
     std::string config_path = loaded_configs.empty() ? "" : loaded_configs.back();
-    bool config_loaded = !loaded_configs.empty();
 
     // Синхронизация списка абонентов с cfg.imsi/msisdn (обратная совместимость)
     if (cfg.subscribers.empty() && !cfg.imsi.empty()) {
@@ -12609,7 +12601,6 @@ int main(int argc, char** argv) {
     uint8_t  nc_m3ua_ni = cfg.nc_m3ua_ni;  // Активный NI для Nc
     uint8_t  nc_si      = cfg.nc_si;
     
-    bool use_sctp = false;  // Использовать SCTP вместо UDP
     bool use_bssmap_complete_l3 = false;  // Использовать BSSMAP Complete Layer 3 вместо DTAP
     bool send_clear_command = false;  // Отправить BSSMAP Clear Command
     uint16_t cell_id = cfg.cell_id;  // Cell Identity
@@ -12652,7 +12643,6 @@ int main(int argc, char** argv) {
     bool show_transport = false;
     bool show_encapsulation = false;
     // Флаги по интерфейсам
-    bool show_interfaces     = false;  // --show-interfaces: все 7 интерфейсов
     bool show_subscriber    = false;
     bool show_a_interface    = false;
     bool show_c_interface    = false;
@@ -12674,6 +12664,7 @@ int main(int argc, char** argv) {
     bool cic_clear_flag      = false;  // --cic-clear
     uint16_t cic_op_target   = 0;      // CIC для операции (0 = все/по умолч.)
     bool show_alarms         = false;  // --show-alarms
+    bool show_stat           = false;  // --show-stat
 
     // Простой парсинг аргументов
     for (int i = 1; i < argc; ++i) {
@@ -12744,7 +12735,6 @@ int main(int argc, char** argv) {
         else if (arg == "--opc" && i+1 < argc) m3ua_opc = std::stoul(argv[++i]);
         else if (arg == "--dpc" && i+1 < argc) m3ua_dpc = std::stoul(argv[++i]);
         else if (arg == "--ni"  && i+1 < argc) m3ua_ni  = std::stoul(argv[++i]);
-        else if (arg == "--use-sctp") use_sctp = true;
         else if (arg == "--use-bssmap-l3") use_bssmap_complete_l3 = true;
         else if (arg == "--cell-id" && i+1 < argc) cell_id = std::stoi(argv[++i]);
         else if (arg == "--send-clear") {
@@ -12761,7 +12751,6 @@ int main(int argc, char** argv) {
                     std::remove(loaded_configs.begin(), loaded_configs.end(), path),
                     loaded_configs.end());
                 loaded_configs.push_back(path);
-                config_loaded = true;
                 config_path   = path;
                 // Применяем все поля из только что загруженного слоя
                 imsi        = cfg.imsi;
@@ -12879,7 +12868,6 @@ int main(int argc, char** argv) {
         }
         else if (arg == "--show-interfaces") {
             if (show_all) { show_all = false; }
-            show_interfaces     = true;
             show_a_interface    = true;
             show_c_interface    = true;
             show_f_interface    = true;
@@ -12986,6 +12974,11 @@ int main(int argc, char** argv) {
         else if (arg == "--show-alarms") {
             if (show_all) { show_all = false; }
             show_alarms = true;
+            do_lu = false; do_paging = false;
+        }
+        else if (arg == "--show-stat") {
+            if (show_all) { show_all = false; }
+            show_stat = true;
             do_lu = false; do_paging = false;
         }
         // ── C-интерфейс: MAP over SCCP UDT ──────────────────────────
@@ -14115,18 +14108,6 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (!show_alarms) {
-        std::cout << "vMSC инициализирован\n";
-        if (!loaded_configs.empty()) {
-            std::cout << COLOR_GREEN;
-            for (const auto &p : loaded_configs)
-                std::cout << "✓ Конфигурация загружена из " << p << "\n";
-            std::cout << COLOR_RESET;
-        }
-        std::cout << "\n";
-        std::cout << COLOR_MAGENTA << "=== Параметры генерации ===" << COLOR_RESET << "\n\n";
-    }
-
     // Заголовок секции: жирный, по центру, с разделителями
     auto print_section_header = [](const std::string &name, const std::string &comment = "") {
         int W = 60;
@@ -14149,16 +14130,6 @@ int main(int argc, char** argv) {
             if (cpad < 0) cpad = 0;
             std::cout << COLOR_CYAN << std::string(cpad, ' ') << comment << COLOR_RESET << "\n";
         }
-    };
-
-    auto print_separator = []() {
-        int W = 60;
-        struct winsize ws;
-        if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
-            W = ws.ws_col < 100 ? (int)ws.ws_col : 100;
-        std::string line;
-        for (int i = 0; i < W; i++) line += "─";
-        std::cout << COLOR_YELLOW << line << COLOR_RESET << "\n";
     };
 
     // Вывод MTP3-параметров SI/SLS/MP (единый формат для всех интерфейсов)
@@ -14190,6 +14161,15 @@ int main(int argc, char** argv) {
     // [subscriber] / старый [identity]
     if (show_all || show_subscriber || show_identity) {
         print_section_header("[subscriber]");
+        if (show_all || show_identity) {
+            std::cout << "  " << COLOR_CYAN << "GSM 04.08 / LAI:" << COLOR_RESET << "\n";
+            std::cout << "    MCC: " << COLOR_GREEN << std::dec << mcc << COLOR_RESET << "\n";
+            std::cout << "    MNC: " << COLOR_GREEN << mnc  << COLOR_RESET << "\n";
+            std::cout << "    LAC: " << COLOR_GREEN << std::dec << lac << COLOR_RESET
+                      << " (0x" << std::hex << lac << std::dec << COLOR_RESET << ")\n";
+            std::cout << "    Cell ID: " << COLOR_GREEN << cell_id << COLOR_RESET << "\n";
+            std::cout << "\n";
+        }
         if (cfg.subscribers.size() > 1) {
             // Таблица абонентов
             for (int _i = 0; _i < (int)cfg.subscribers.size(); ++_i) {
@@ -14256,7 +14236,7 @@ int main(int argc, char** argv) {
     if (show_all || show_a_interface || show_network || show_m3ua || show_bssmap || show_transport) {
         print_section_header("[A-interface]");
 
-        if (show_all || show_a_interface || show_network) {
+        if (show_all || show_a_interface) {
             std::cout << "  " << COLOR_CYAN << "GSM 04.08 / LAI:" << COLOR_RESET << "\n";
             std::cout << "    MCC: " << COLOR_GREEN << std::dec << mcc << COLOR_RESET << "\n";
             std::cout << "    MNC: " << COLOR_GREEN << mnc  << COLOR_RESET << "\n";
@@ -15130,27 +15110,199 @@ int main(int argc, char** argv) {
         std::cout << "\n";
     }
 
+    // ── STAT: сводная статистика ──────────────────────────────────────────
+    if (show_stat) {
+        print_section_header("[STAT]", "Сводная статистика vMSC");
+
+        // ── VLR ──────────────────────────────────────────────────────────
+        {
+            auto vlr_path2 = [&]() -> std::string {
+                if (!config_path.empty()) {
+                    std::string base = config_path;
+                    size_t sl = base.find_last_of("/\\");
+                    if (sl != std::string::npos) base = base.substr(0, sl+1); else base="./";
+                    return base + "vmsc_vlr.conf";
+                }
+                return "./vmsc_vlr.conf";
+            }();
+            int n_reg = 0, n_dereg = 0, n_paging = 0, n_total = 0;
+            std::ifstream vf(vlr_path2);
+            if (vf.is_open()) {
+                std::string ln;
+                while (std::getline(vf, ln)) {
+                    ln.erase(0, ln.find_first_not_of(" \t\r\n"));
+                    size_t eq = ln.find('='); if (eq == std::string::npos) continue;
+                    std::string k=ln.substr(0,eq), v=ln.substr(eq+1);
+                    k.erase(0,k.find_first_not_of(" \t")); k.erase(k.find_last_not_of(" \t")+1);
+                    v.erase(0,v.find_first_not_of(" \t")); v.erase(v.find_last_not_of(" \t")+1);
+                    if      (k == "imsi")  ++n_total;
+                    else if (k == "state") {
+                        if      (v == "REG")    ++n_reg;
+                        else if (v == "PAGING") ++n_paging;
+                        else                    ++n_dereg;
+                    }
+                }
+            }
+            std::cout << "  " << COLOR_CYAN << "VLR:" << COLOR_RESET << "\n";
+            std::cout << "    Всего: "  << COLOR_GREEN  << n_total  << COLOR_RESET
+                      << "  REG: "     << COLOR_GREEN  << n_reg    << COLOR_RESET
+                      << "  DEREG: "   << COLOR_YELLOW << n_dereg  << COLOR_RESET
+                      << "  PAGING: "  << COLOR_CYAN   << n_paging << COLOR_RESET << "\n";
+            if (!cfg.msrn_prefix.empty() && cfg.msrn_range_end >= cfg.msrn_range_start) {
+                uint32_t pool_sz = cfg.msrn_range_end - cfg.msrn_range_start + 1;
+                std::cout << "    MSRN:  " << COLOR_GREEN
+                          << cfg.msrn_prefix << cfg.msrn_range_start << COLOR_RESET
+                          << " … " << COLOR_GREEN << cfg.msrn_prefix << cfg.msrn_range_end
+                          << COLOR_RESET << "  (" << pool_sz << " номеров)\n";
+            } else {
+                std::cout << "    MSRN:  " << COLOR_YELLOW << "(не настроен)" << COLOR_RESET << "\n";
+            }
+            std::cout << "\n";
+        }
+
+        // ── CIC ──────────────────────────────────────────────────────────
+        {
+            auto cic_path2 = [&]() -> std::string {
+                if (!config_path.empty()) {
+                    std::string base = config_path;
+                    size_t sl = base.find_last_of("/\\");
+                    if (sl != std::string::npos) base = base.substr(0, sl+1); else base="./";
+                    return base + "vmsc_cic.conf";
+                }
+                return "./vmsc_cic.conf";
+            }();
+            std::vector<CicEntry> ct;
+            std::ifstream cf(cic_path2);
+            if (cf.is_open()) {
+                std::string ln; CicEntry e; bool in_e = false;
+                while (std::getline(cf, ln)) {
+                    ln.erase(0, ln.find_first_not_of(" \t\r\n"));
+                    if (ln.empty() || ln[0]=='#') continue;
+                    if (ln[0]=='[') { if (in_e && e.cic) ct.push_back(e); e=CicEntry{}; in_e=true; continue; }
+                    size_t eq=ln.find('='); if (eq==std::string::npos) continue;
+                    std::string k=ln.substr(0,eq), v=ln.substr(eq+1);
+                    k.erase(0,k.find_first_not_of(" \t")); k.erase(k.find_last_not_of(" \t")+1);
+                    v.erase(0,v.find_first_not_of(" \t")); v.erase(v.find_last_not_of(" \t")+1);
+                    if (k=="cic") { try { e.cic=(uint16_t)std::stoul(v); } catch(...){} }
+                    else if (k=="state") { e.state=(v=="ACTIVE")?CicState::ACTIVE:(v=="BLOCKED")?CicState::BLOCKED:(v=="RESET")?CicState::RESETTING:CicState::IDLE; }
+                }
+                if (in_e && e.cic) ct.push_back(e);
+            }
+            int n_idle=0, n_active=0, n_blocked=0, n_reset=0;
+            for (const auto &e : ct) {
+                if      (e.state==CicState::IDLE)      ++n_idle;
+                else if (e.state==CicState::ACTIVE)    ++n_active;
+                else if (e.state==CicState::BLOCKED)   ++n_blocked;
+                else if (e.state==CicState::RESETTING) ++n_reset;
+            }
+            int total = (int)ct.size();
+            std::cout << "  " << COLOR_CYAN << "CIC  (ISUP-interface):" << COLOR_RESET << "\n";
+            std::cout << "    Пул: " << cfg.cic_range_start << "…" << cfg.cic_range_end
+                      << "  (" << total << " каналов)\n";
+            std::cout << "    IDLE: "   << COLOR_GREEN  << n_idle    << COLOR_RESET
+                      << "  ACTIVE: "  << COLOR_CYAN   << n_active  << COLOR_RESET
+                      << "  BLOCKED: " << COLOR_YELLOW << n_blocked << COLOR_RESET
+                      << "  RSC: "     << COLOR_CYAN   << n_reset   << COLOR_RESET << "\n";
+            if (total > 0) {
+                int pct = n_active * 100 / total;
+                std::cout << "    Загрузка: " << (pct >= 80 ? COLOR_YELLOW : COLOR_GREEN)
+                          << pct << "%" << COLOR_RESET << "\n";
+            }
+            std::cout << "\n";
+        }
+
+        // ── Интерфейсы ───────────────────────────────────────────────────
+        std::cout << "  " << COLOR_CYAN << "Интерфейсы:" << COLOR_RESET << "\n";
+        struct { const char *name; const std::string &ip; } stat_ifaces[] = {
+            {"A    (BSC) ", cfg.remote_ip},
+            {"C    (HLR) ", cfg.c_remote_ip},
+            {"F    (EIR) ", cfg.f_remote_ip},
+            {"E    (MSC) ", cfg.e_remote_ip},
+            {"Nc   (MGW) ", cfg.nc_remote_ip},
+            {"ISUP  (GW) ", cfg.isup_remote_ip},
+            {"Gs  (SGSN) ", cfg.gs_remote_ip},
+        };
+        for (const auto &ifc : stat_ifaces) {
+            if (!ifc.ip.empty())
+                std::cout << "    " << COLOR_GREEN  << "\u2713" << COLOR_RESET
+                          << "  " << ifc.name << "  " << COLOR_GREEN  << ifc.ip << COLOR_RESET << "\n";
+            else
+                std::cout << "    " << COLOR_YELLOW << "\u2717" << COLOR_RESET
+                          << "  " << ifc.name << "  " << COLOR_YELLOW << "(не настроен)" << COLOR_RESET << "\n";
+        }
+        std::cout << "\n";
+
+        // ── Абоненты ─────────────────────────────────────────────────────
+        int active_subs = 0;
+        for (const auto &s : cfg.subscribers) if (!s.imsi.empty()) ++active_subs;
+        std::cout << "  " << COLOR_CYAN << "Абоненты (vmsc.conf):" << COLOR_RESET << "  "
+                  << COLOR_GREEN << active_subs << COLOR_RESET << "\n\n";
+    }
+
     if (show_encapsulation || (show_all && send_udp)) {
         print_section_header("[encapsulation]");
-        std::cout << "  " << COLOR_CYAN;
-        if (use_m3ua) {
-            std::cout << "M3UA → ";
-        }
+
+        // Заголовок
+        std::cout << "  " << COLOR_CYAN << "Стек инкапсуляции (bottom → top):" << COLOR_RESET << "\n\n";
+
+        // Общая диаграмма стека
+        std::cout << "  " << COLOR_GREEN  << "  UDP socket" << COLOR_RESET << "\n";
+        std::cout << "    └─ " << COLOR_GREEN << "M3UA DATA" << COLOR_RESET
+                  << "  (SIGTRAN, RFC 4666)" << "\n";
+        std::cout << "         └─ " << COLOR_CYAN << "SCCP" << COLOR_RESET
+                  << "  (SI=3, ITU Q.711-Q.714)" << "\n";
+        std::cout << "              └─ " << COLOR_CYAN << "BSSAP / MAP / ISUP" << COLOR_RESET
+                  << "  (payload)" << "\n";
+        std::cout << "                   └─ " << COLOR_MAGENTA << "GSM 04.08 / MAP / ISUP-PDU" << COLOR_RESET
+                  << "  (L3 message)" << "\n";
+        std::cout << "\n";
+
+        // Таблица по интерфейсам
+        std::cout << "  " << COLOR_YELLOW << "Интерфейс   Пиры              SI    SCCP-тип   SSN (local→remote)" << COLOR_RESET << "\n";
+        std::cout << "  " << std::string(70, '-') << "\n";
+
+        // A-interface
+        std::cout << "  " << COLOR_CYAN << "A" << COLOR_RESET
+                  << "           MSC ↔ BSC           3     CR/DT1     BSSAP=254 ↔ BSSAP=254\n";
+        // C-interface
+        std::cout << "  " << COLOR_CYAN << "C" << COLOR_RESET
+                  << "           MSC ↔ HLR           3     UDT        MSC/VLR=8 → HLR=6\n";
+        // F-interface
+        std::cout << "  " << COLOR_CYAN << "F" << COLOR_RESET
+                  << "           MSC ↔ EIR           3     UDT        MSC/VLR=8 → EIR=11\n";
+        // E-interface
+        std::cout << "  " << COLOR_CYAN << "E" << COLOR_RESET
+                  << "           MSC ↔ MSC           3     CR/DT1     MSC/VLR=8 ↔ MSC/VLR=8\n";
+        // Nc-interface
+        std::cout << "  " << COLOR_CYAN << "Nc" << COLOR_RESET
+                  << "          MSC-S ↔ MGW          3     UDT        —\n";
+        // ISUP-interface
+        std::cout << "  " << COLOR_CYAN << "ISUP" << COLOR_RESET
+                  << "        MSC ↔ PSTN/GW       " << COLOR_YELLOW << "5" << COLOR_RESET
+                  << "     (нет SCCP)   —  (SI=5, прямо в M3UA)\n";
+        // Gs-interface
+        std::cout << "  " << COLOR_CYAN << "Gs" << COLOR_RESET
+                  << "          MSC ↔ SGSN          3     UDT        BSSAP+=254 ↔ BSSAP+=254\n";
+        std::cout << "\n";
+
+        // Примечания
+        std::cout << "  " << COLOR_YELLOW << "Примечания:" << COLOR_RESET << "\n";
+        std::cout << "    • SCCP CR/DT1  — connection-oriented (A, E интерфейсы)\n";
+        std::cout << "    • SCCP UDT     — connectionless, Protocol Class 1 (C, F, Nc, Gs)\n";
+        std::cout << "    • ISUP         — SI=5, без SCCP, payload напрямую в M3UA\n";
+        std::cout << "    • GTI=4 GT routing включается через gt_ind=4 в vmsc_interfaces.conf\n";
+        std::cout << "    • B-interface (MSC ↔ VLR) — внутренний, нет сетевого блока\n";
+        std::cout << "\n";
+
+        // Активная конфигурация
+        std::cout << "  " << COLOR_CYAN << "Активные флаги текущего запуска:" << COLOR_RESET << "\n";
+        std::cout << "    M3UA   : " << (use_m3ua  ? std::string(COLOR_GREEN) + "✓ вкл" : std::string(COLOR_YELLOW) + "✗ выкл") << COLOR_RESET << "  (--use-m3ua)\n";
+        std::cout << "    SCCP   : " << (use_sccp  ? std::string(COLOR_GREEN) + "✓ вкл" : std::string(COLOR_YELLOW) + "✗ выкл") << COLOR_RESET << "  (--use-sccp)\n";
+        std::cout << "    BSSAP  : " << (use_bssap ? std::string(COLOR_GREEN) + "✓ вкл" : std::string(COLOR_YELLOW) + "✗ выкл") << COLOR_RESET << "  (--use-bssap)\n";
+        std::cout << "    UDP TX : " << (send_udp  ? std::string(COLOR_GREEN) + "✓ вкл" : std::string(COLOR_YELLOW) + "✗ выкл") << COLOR_RESET << "  (--send-udp)\n";
         if (use_sccp) {
-            if (use_sccp_dt1) {
-                std::cout << "SCCP DT1 → ";
-            } else {
-                std::cout << "SCCP CR → ";
-            }
+            std::cout << "    SCCP   : " << (use_sccp_dt1 ? "DT1 (connection-oriented)" : "CR  (connection-oriented, setup)") << "\n";
         }
-        if (use_bssap) {
-            if (use_bssmap_complete_l3) {
-                std::cout << "BSSMAP Complete L3 → ";
-            } else {
-                std::cout << "BSSAP DTAP → ";
-            }
-        }
-        std::cout << "GSM 04.08" << COLOR_RESET << "\n";
     }
     std::cout << "\n";
 
