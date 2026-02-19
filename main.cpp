@@ -3998,6 +3998,174 @@ static struct msgb *generate_map_return_error(uint32_t dtid, uint8_t invoke_id, 
 }
 
 // ============================================================
+// P18: MAP Supplementary Services (3GPP TS 29.002 §14)
+//   RegisterSS    opCode=10 (0x0A)  MSC/VLR → HLR  (C-interface)
+//   EraseSS       opCode=11 (0x0B)  MSC/VLR → HLR
+//   ActivateSS    opCode=12 (0x0C)  MSC/VLR → HLR
+//   DeactivateSS  opCode=13 (0x0D)  MSC/VLR → HLR
+//   InterrogateSS opCode=14 (0x0E)  MSC/VLR → HLR
+// AC OID: supplementaryServiceContext-v3 = {0.4.0.0.1.0.50.3}
+// BER OID bytes: 04 00 00 01 00 32 03
+//
+// Common SS-Codes (ITU Q.932 / 3GPP TS 22.030):
+//   0x21=CFU  0x28=CFB  0x2A=CFNRy  0x2B=CFNRc  0x20=allForwardingSS
+//   0x31=CLIP 0x33=CLIR 0x35=COLP   0x36=COLR
+//   0x61=MPTY 0x66=HOLD 0x67=ECT    0x69=CCBS
+//   0x91=BAOC 0xA1=BOIC 0xB1=BAIC   0xB2=BIC-Roam
+// ============================================================
+
+static const char *ss_name(uint8_t ss_code) {
+    switch (ss_code) {
+        case 0x10: return "allSS";
+        case 0x20: return "allForwardingSS";
+        case 0x21: return "CFU";
+        case 0x28: return "CFB";
+        case 0x2A: return "CFNRy";
+        case 0x2B: return "CFNRc";
+        case 0x31: return "CLIP";
+        case 0x33: return "CLIR";
+        case 0x35: return "COLP";
+        case 0x36: return "COLR";
+        case 0x61: return "MPTY";
+        case 0x66: return "HOLD";
+        case 0x67: return "ECT";
+        case 0x69: return "CCBS";
+        case 0x91: return "BAOC";
+        case 0xA1: return "BOIC";
+        case 0xB1: return "BAIC";
+        case 0xB2: return "BIC-Roam";
+        default:   return "(unknown)";
+    }
+}
+
+// ──────────────────────────────────────────────────────────────
+// MAP RegisterSS — 3GPP TS 29.002 §14.2.1,  opCode=10
+// RegisterSS-Arg ::= SEQUENCE {
+//   ss-Code              SS-Code,            -- 0x04 0x01 <code>
+//   forwardedToNumber [5] IMPLICIT AddressString OPTIONAL  -- BCD, TON=0x91
+// }
+// ──────────────────────────────────────────────────────────────
+static struct msgb *generate_map_register_ss(uint8_t ss_code, const char *fwd_num) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "MAP RegisterSS");
+    if (!msg) return nullptr;
+
+    uint8_t ssc_ie[4];  uint8_t ssc_len  = (uint8_t)ber_tlv(ssc_ie, 0x04, &ss_code, 1);
+    uint8_t seq_body[48]; uint8_t sq_len = 0;
+    memcpy(seq_body + sq_len, ssc_ie, ssc_len); sq_len += ssc_len;
+
+    if (fwd_num && strlen(fwd_num) > 0) {
+        uint8_t bcd[12]; memset(bcd, 0xFF, sizeof(bcd));
+        bcd[0] = 0x91;  // TON=international, NPI=ISDN
+        size_t nlen = strlen(fwd_num); uint8_t bl = 1;
+        for (size_t i = 0; i < nlen && bl < 11; i += 2) {
+            bcd[bl]  = (uint8_t)(fwd_num[i] - '0') & 0x0F;
+            if (i+1 < nlen) bcd[bl] |= (uint8_t)((fwd_num[i+1]-'0') << 4);
+            else             bcd[bl] |= 0xF0;
+            bl++;
+        }
+        uint8_t fwd_ie[16]; uint8_t fwd_len = (uint8_t)ber_tlv(fwd_ie, 0x85, bcd, bl); // [5] IMPLICIT
+        memcpy(seq_body + sq_len, fwd_ie, fwd_len); sq_len += fwd_len;
+    }
+
+    uint8_t arg[64];  uint8_t arg_len  = (uint8_t)ber_tlv(arg, 0x30, seq_body, sq_len);
+    uint8_t ss_ac_oid[] = {0x04, 0x00, 0x00, 0x01, 0x00, 0x32, 0x03};
+    static uint32_t rss_tid = 0x00001100;
+    uint8_t pdu[300]; uint8_t pdu_len = build_tcap_begin(pdu, rss_tid++, ss_ac_oid, sizeof(ss_ac_oid),
+                                                          0x01, 10 /*RegisterSS*/, arg, arg_len);
+    memcpy(msgb_put(msg, pdu_len), pdu, pdu_len);
+
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e MAP RegisterSS" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  SS-Code:  " << COLOR_GREEN << "0x" << std::hex << std::uppercase << (int)ss_code
+              << std::dec << " (" << ss_name(ss_code) << ")" << COLOR_RESET << "\n";
+    if (fwd_num && strlen(fwd_num) > 0)
+        std::cout << COLOR_BLUE << "  FwdTo:    " << COLOR_GREEN << fwd_num << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  OpCode:   " << COLOR_GREEN << "10 (0x0A) RegisterSS" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440:   " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex MAP RegisterSS:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────
+// MAP EraseSS — opCode=11  /  ActivateSS — opCode=12
+// MAP DeactivateSS — opCode=13  /  InterrogateSS — opCode=14
+// SS-ForBS-Code ::= SEQUENCE { ss-Code SS-Code }
+// ──────────────────────────────────────────────────────────────
+static struct msgb *build_map_ss_simple(uint8_t op_code, uint8_t ss_code,
+                                         uint32_t &tid_ref, const char *label) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, label);
+    if (!msg) return nullptr;
+    uint8_t ssc_ie[4]; uint8_t ssc_len = (uint8_t)ber_tlv(ssc_ie, 0x04, &ss_code, 1);
+    uint8_t arg[16];   uint8_t arg_len = (uint8_t)ber_tlv(arg, 0x30, ssc_ie, ssc_len);
+    uint8_t ss_ac_oid[] = {0x04, 0x00, 0x00, 0x01, 0x00, 0x32, 0x03};
+    uint8_t pdu[300];  uint8_t pdu_len = build_tcap_begin(pdu, tid_ref++, ss_ac_oid, sizeof(ss_ac_oid),
+                                                           0x01, op_code, arg, arg_len);
+    memcpy(msgb_put(msg, pdu_len), pdu, pdu_len);
+    return msg;
+}
+
+static struct msgb *generate_map_erase_ss(uint8_t ss_code) {
+    static uint32_t ess_tid = 0x00001200;
+    struct msgb *msg = build_map_ss_simple(11, ss_code, ess_tid, "MAP EraseSS");
+    if (!msg) return nullptr;
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e MAP EraseSS" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  SS-Code:  " << COLOR_GREEN << "0x" << std::hex << std::uppercase
+              << (int)ss_code << std::dec << " (" << ss_name(ss_code) << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  OpCode:   " << COLOR_GREEN << "11 (0x0B) EraseSS" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440:   " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex MAP EraseSS:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+static struct msgb *generate_map_activate_ss(uint8_t ss_code) {
+    static uint32_t ass_tid = 0x00001300;
+    struct msgb *msg = build_map_ss_simple(12, ss_code, ass_tid, "MAP ActivateSS");
+    if (!msg) return nullptr;
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e MAP ActivateSS" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  SS-Code:  " << COLOR_GREEN << "0x" << std::hex << std::uppercase
+              << (int)ss_code << std::dec << " (" << ss_name(ss_code) << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  OpCode:   " << COLOR_GREEN << "12 (0x0C) ActivateSS" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440:   " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex MAP ActivateSS:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+static struct msgb *generate_map_deactivate_ss(uint8_t ss_code) {
+    static uint32_t dss_tid = 0x00001400;
+    struct msgb *msg = build_map_ss_simple(13, ss_code, dss_tid, "MAP DeactivateSS");
+    if (!msg) return nullptr;
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e MAP DeactivateSS" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  SS-Code:  " << COLOR_GREEN << "0x" << std::hex << std::uppercase
+              << (int)ss_code << std::dec << " (" << ss_name(ss_code) << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  OpCode:   " << COLOR_GREEN << "13 (0x0D) DeactivateSS" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440:   " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex MAP DeactivateSS:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+static struct msgb *generate_map_interrogate_ss(uint8_t ss_code) {
+    static uint32_t iss_tid = 0x00001500;
+    struct msgb *msg = build_map_ss_simple(14, ss_code, iss_tid, "MAP InterrogateSS");
+    if (!msg) return nullptr;
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e MAP InterrogateSS" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  SS-Code:  " << COLOR_GREEN << "0x" << std::hex << std::uppercase
+              << (int)ss_code << std::dec << " (" << ss_name(ss_code) << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  OpCode:   " << COLOR_GREEN << "14 (0x0E) InterrogateSS" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440:   " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex MAP InterrogateSS:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ============================================================
 // P15: MAP SMS Gateway messages (3GPP TS 29.002 §10.5.6)
 //   SRI-SM          opCode=45 (0x2D)  GMSC/MSC → HLR
 //   ReportSMDeliveryStatus opCode=47 (0x2F)  SMSC → HLR
@@ -5252,6 +5420,14 @@ int main(int argc, char** argv) {
     bool     do_map_report_smds = false;  // MAP ReportSMDeliveryStatus   opCode=47 (SMSC→HLR)
     std::string smsc_param      = "79161000099";  // --smsc: E.164 адрес SMSC
     uint8_t  smds_outcome_param = 2;              // --smds-outcome: 0=memCap 1=absent 2=success
+    // P18: MAP Supplementary Services (3GPP TS 29.002 §14)
+    bool     do_map_register_ss    = false;  // RegisterSS    opCode=10  (C-interface, MSC→HLR)
+    bool     do_map_erase_ss       = false;  // EraseSS       opCode=11  (C-interface, MSC→HLR)
+    bool     do_map_activate_ss    = false;  // ActivateSS    opCode=12  (C-interface, MSC→HLR)
+    bool     do_map_deactivate_ss  = false;  // DeactivateSS  opCode=13  (C-interface, MSC→HLR)
+    bool     do_map_interrogate_ss = false;  // InterrogateSS opCode=14  (C-interface, MSC→HLR)
+    uint8_t  ss_code_param         = 0x21;   // --ss-code: default 0x21=CFU
+    std::string ss_fwd_num_param   = "";     // --ss-fwd-num: ForwardedToNumber (RegisterSS)
     // P6: A-interface DTAP/BSSMAP — аутентификация, шифрование, LU accept/reject
     bool     do_dtap_auth_req   = false;  // DTAP Authentication Request  MM 0x12
     bool     do_dtap_auth_resp  = false;  // DTAP Authentication Response MM 0x14
@@ -5872,6 +6048,33 @@ int main(int argc, char** argv) {
         }
         else if (arg == "--smsc"         && i + 1 < argc) smsc_param         = argv[++i];
         else if (arg == "--smds-outcome" && i + 1 < argc) smds_outcome_param = (uint8_t)std::stoul(argv[++i]);
+        // ── P18: MAP Supplementary Services ───────────────────────────────────────
+        else if (arg == "--send-map-register-ss") {
+            do_map_register_ss = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-map-erase-ss") {
+            do_map_erase_ss = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-map-activate-ss") {
+            do_map_activate_ss = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-map-deactivate-ss") {
+            do_map_deactivate_ss = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-map-interrogate-ss") {
+            do_map_interrogate_ss = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--ss-code" && i + 1 < argc) {
+            ss_code_param = (uint8_t)std::stoul(argv[++i], nullptr, 0);
+        }
+        else if (arg == "--ss-fwd-num" && i + 1 < argc) {
+            ss_fwd_num_param = argv[++i];
+        }
         else if (arg == "--send-isup-acm") {
             do_isup_acm = true;
             do_lu       = false;
@@ -7498,6 +7701,53 @@ int main(int argc, char** argv) {
             }
             msgb_free(map_msg);
         }
+    }
+
+    // ── P18: MAP Supplementary Services ──────────────────────────────────────
+    auto send_ss_via_c = [&](struct msgb *map_msg) {
+        if (!map_msg) return;
+        if (send_udp && !c_remote_ip.empty()) {
+            ScpAddr c_called  { c_ssn_remote, c_gt_ind, gt_tt, gt_np, gt_nai, c_gt_called };
+            ScpAddr c_calling { c_ssn_local,  c_gt_ind, gt_tt, gt_np, gt_nai, msc_gt };
+            struct msgb *sccp_msg = wrap_in_sccp_udt(map_msg, c_called, c_calling);
+            if (sccp_msg) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, c_opc, c_dpc, c_m3ua_ni, c_si, mp, sls);
+                if (m3ua_msg) {
+                    send_message_udp(m3ua_msg->data, m3ua_msg->len, c_remote_ip.c_str(), c_remote_port);
+                    msgb_free(m3ua_msg);
+                }
+                msgb_free(sccp_msg);
+            }
+        } else if (send_udp) {
+            std::cerr << COLOR_YELLOW << "⚠ C-interface: remote_ip не задан\n" << COLOR_RESET;
+        }
+        msgb_free(map_msg);
+    };
+
+    if (do_map_register_ss) {
+        print_section_header("[MAP RegisterSS]", "C-interface  (MSC/VLR \xe2\x86\x92 HLR, opCode=10)");
+        std::cout << "\n";
+        send_ss_via_c(generate_map_register_ss(ss_code_param, ss_fwd_num_param.c_str()));
+    }
+    if (do_map_erase_ss) {
+        print_section_header("[MAP EraseSS]", "C-interface  (MSC/VLR \xe2\x86\x92 HLR, opCode=11)");
+        std::cout << "\n";
+        send_ss_via_c(generate_map_erase_ss(ss_code_param));
+    }
+    if (do_map_activate_ss) {
+        print_section_header("[MAP ActivateSS]", "C-interface  (MSC/VLR \xe2\x86\x92 HLR, opCode=12)");
+        std::cout << "\n";
+        send_ss_via_c(generate_map_activate_ss(ss_code_param));
+    }
+    if (do_map_deactivate_ss) {
+        print_section_header("[MAP DeactivateSS]", "C-interface  (MSC/VLR \xe2\x86\x92 HLR, opCode=13)");
+        std::cout << "\n";
+        send_ss_via_c(generate_map_deactivate_ss(ss_code_param));
+    }
+    if (do_map_interrogate_ss) {
+        print_section_header("[MAP InterrogateSS]", "C-interface  (MSC/VLR \xe2\x86\x92 HLR, opCode=14)");
+        std::cout << "\n";
+        send_ss_via_c(generate_map_interrogate_ss(ss_code_param));
     }
 
     // ── ISUP IAM (Initial Address Message) ───────────────────────────────────

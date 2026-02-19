@@ -89,6 +89,13 @@ GSM/SIGTRAN protocol message generator and simulator.
 | `--send-map-report-smds` | MAP ReportSMDeliveryStatus (opCode=47, C-interface, SMSC → HLR) |
 | `--smsc <E.164>` | Адрес SMSC для SRI-SM / ReportSMDeliveryStatus (умолч. `79161000099`) |
 | `--smds-outcome <N>` | SM-DeliveryOutcome: `0`=memCapacityExceeded `1`=absentSubscriber `2`=successfulTransfer (умолч.) |
+| `--send-map-register-ss` | MAP RegisterSS (opCode=10, C-interface, MSC/VLR → HLR) |
+| `--send-map-erase-ss` | MAP EraseSS (opCode=11, C-interface, MSC/VLR → HLR) |
+| `--send-map-activate-ss` | MAP ActivateSS (opCode=12, C-interface, MSC/VLR → HLR) |
+| `--send-map-deactivate-ss` | MAP DeactivateSS (opCode=13, C-interface, MSC/VLR → HLR) |
+| `--send-map-interrogate-ss` | MAP InterrogateSS (opCode=14, C-interface, MSC/VLR → HLR) |
+| `--ss-code <hex>` | SS-Code: `0x21`=CFU `0x28`=CFB `0x2A`=CFNRy `0x2B`=CFNRc `0x33`=CLIR `0x31`=CLIP `0x91`=BAOC `0xB1`=BAIC (умолч. `0x21`) |
+| `--ss-fwd-num <E.164>` | ForwardedToNumber для RegisterSS (E.164, без префикса '+') |
 | `--send-dtap-auth-req` | DTAP Authentication Request (MM 0x12, A-interface, MSC → MS) |
 | `--send-dtap-auth-resp` | DTAP Authentication Response (MM 0x14, A-interface, MS → MSC) |
 | `--send-dtap-id-req` | DTAP Identity Request (MM 0x18, A-interface, MSC → MS) |
@@ -288,6 +295,20 @@ MSC (мы)                          HLR (партнёр)
 ./vmsc --send-map-report-smds --smds-outcome 2                       --send-udp --use-m3ua  # outcome=2: successfulTransfer (умолч.)
 ./vmsc --send-map-report-smds --smds-outcome 1 --smsc 79161000001    --send-udp --use-m3ua  # outcome=1: absentSubscriber
 ./vmsc --send-map-report-smds --smds-outcome 0                       --send-udp --use-m3ua  # outcome=0: memCapacityExceeded
+
+# P18: C-interface MAP Supplementary Services (3GPP TS 29.002 §14)
+# SS flow: RegisterSS → ActivateSS / DeactivateSS / EraseSS / InterrogateSS
+./vmsc --send-map-register-ss                                          --send-udp --use-m3ua  # RegisterSS    (opCode=10, CFU default)
+./vmsc --send-map-register-ss  --ss-code 0x21 --ss-fwd-num 79161000099 --send-udp --use-m3ua  # RegisterSS CFU + fwd number
+./vmsc --send-map-register-ss  --ss-code 0x28                          --send-udp --use-m3ua  # RegisterSS CFB
+./vmsc --send-map-erase-ss                                             --send-udp --use-m3ua  # EraseSS       (opCode=11)
+./vmsc --send-map-erase-ss     --ss-code 0x2B                          --send-udp --use-m3ua  # EraseSS CFNRc
+./vmsc --send-map-activate-ss                                          --send-udp --use-m3ua  # ActivateSS    (opCode=12)
+./vmsc --send-map-activate-ss  --ss-code 0x33                          --send-udp --use-m3ua  # ActivateSS CLIR
+./vmsc --send-map-deactivate-ss                                        --send-udp --use-m3ua  # DeactivateSS  (opCode=13)
+./vmsc --send-map-deactivate-ss --ss-code 0x91                         --send-udp --use-m3ua  # DeactivateSS BAOC
+./vmsc --send-map-interrogate-ss                                       --send-udp --use-m3ua  # InterrogateSS (opCode=14)
+./vmsc --send-map-interrogate-ss --ss-code 0xB1                        --send-udp --use-m3ua  # InterrogateSS BAIC
 
 # A-interface: DTAP/BSSMAP — полный LU flow (GSM 04.08 / 3GPP TS 24.008, 48.008)
 # Сброс интерфейса
