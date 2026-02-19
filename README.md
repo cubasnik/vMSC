@@ -21,11 +21,13 @@ GSM/SIGTRAN protocol message generator and simulator.
 | `--show-gt-route` | Таблица GT-маршрутизации SCCP (`[gt-route]`) |
 | `--show-network` | Сетевые параметры: маски, GW, NTP |
 | `--show-subscriber` | Абонентские параметры: IMSI, MSISDN, msc_gt |
+| `--show-subscribers` | Таблица всех абонентов из `[subscriber-N]` с активным маркером `►` |
 | `--show-identity` | Идентификация узла: MCC, MNC, LAC, Cell ID |
 | `--show-m3ua` | Параметры M3UA: OPC/DPC/NI/SI/SLS/MP |
 | `--show-bssmap` | Параметры BSSMAP |
 | `--show-transport` | Транспортные параметры: IP/порты/маски/GW |
 | `--show-encapsulation` | Цепочка инкапсуляции сообщения |
+| `--show-vlr` | VLR-таблица зарегистрированных абонентов + MSRN пул |
 
 ### Отправка сообщений
 
@@ -353,6 +355,78 @@ MSC (мы)                          HLR (партнёр)
 ./vmsc --send-dtap-cc-rel-compl                    --send-udp --use-m3ua  # CC Release Complete
 ```
 
+### Управление абонентами
+
+| Флаг | Описание |
+|---|---|
+| `--subscriber <X>` | Выбрать активного абонента по индексу (1, 2…), IMSI, MSISDN или метке (`label=`) |
+| `--show-subscribers` | Показать таблицу всех абонентов с маркером `►` активного |
+
+```bash
+./vmsc --show-subscribers
+./vmsc --subscriber 2 --show-subscribers        # выбор по индексу
+./vmsc --subscriber 250990000000003              # по IMSI
+./vmsc --subscriber MS-01                        # по метке
+./vmsc --subscriber 79990000002 --send-map-sai --send-udp --use-m3ua  # отправить SAI для абонента 2
+```
+
+Абоненты задаются в `vmsc.conf` секциями `[subscriber]`, `[subscriber-2]`, `[subscriber-3]`, …
+
+---
+
+### Call Flow Sequencer
+
+Автоматически генерирует и (при `--send-udp`) отправляет серию связанных сообщений за один запуск.
+
+| Флаг | Последовательность сообщений |
+|---|---|
+| `--call-flow mo-lu` | BSSMAP Reset → LU Request → Identity Request → Cipher Mode Cmd → LU Accept |
+| `--call-flow full-lu` | то же + MAP SendAuthInfo → DTAP Auth Request → TMSI Realloc Cmd → TMSI Realloc Compl |
+| `--call-flow mo-call` | CM Service Request → CC Setup MO → Assign Request → Call Proceeding → Alerting → Connect → Connect Ack |
+| `--call-flow mo-call-rel` | CC Disconnect → CC Release → CC Release Complete |
+| `--call-flow mt-call` | BSSMAP Paging → CC Setup MT → Call Proceeding → Alerting → Connect → Connect Ack |
+| `--call-flow mo-sms` | CM Service Request (SMS) → CP-Data → MAP MO-ForwardSM |
+
+```bash
+# Только отображение (без отправки)
+./vmsc --call-flow mo-lu
+./vmsc --call-flow full-lu
+
+# С реальной отправкой по UDP
+./vmsc --call-flow full-lu   --send-udp --use-m3ua
+./vmsc --call-flow mo-call   --send-udp --use-m3ua
+./vmsc --call-flow mt-call   --send-udp --use-m3ua
+
+# Для конкретного абонента
+./vmsc --subscriber 2 --call-flow full-lu --send-udp --use-m3ua
+```
+
+---
+
+### VLR State Table
+
+Состояние регистрации абонентов хранится в `vmsc_vlr.conf` (рядом с `vmsc.conf`) и сохраняется между запусками.
+
+| Флаг | Описание |
+|---|---|
+| `--vlr-register` | Зарегистрировать активного абонента в VLR (upsert, перенимает TMSI из `[subscriber-N]`) |
+| `--vlr-deregister` | Перевести абонента в состояние DEREGISTERED (IMSI Detach) |
+| `--vlr-clear` | Очистить всю VLR-таблицу |
+| `--show-vlr` | Отобразить VLR-таблицу: IMSI / MSISDN / TMSI / LAC / CI / STATE / TIME + MSRN пул |
+
+Состояния: `REG` (зарегистрирован), `DEREG` (снят с учёта), `PAGING` (ожидает ответа на paging).
+
+```bash
+./vmsc --vlr-clear                                # очистить таблицу
+./vmsc --vlr-register                             # зарегистрировать абонента 1
+./vmsc --vlr-register --subscriber 2              # зарегистрировать абонента 2
+./vmsc --vlr-register --subscriber MS-03          # по метке
+./vmsc --show-vlr                                 # показать таблицу
+./vmsc --vlr-deregister --subscriber 2            # IMSI Detach для абонента 2
+```
+
+---
+
 ### Стек протоколов
 
 | Флаг | Описание |
@@ -420,11 +494,32 @@ vMSC поддерживает сохранение параметров в ко�
 
 Конфигурация использует простой INI-подобный формат:
 
-**vmsc.conf** — абонентские параметры:
+**vmsc.conf** — абонентские параметры и VLR:
 ```ini
+# Первый абонент (активный по умолчанию)
 [subscriber]
 imsi=250990000000001
 msisdn=79990000001
+label=MS-01
+
+# Дополнительные абоненты
+[subscriber-2]
+imsi=250990000000002
+msisdn=79990000002
+tmsi=0x05060708
+label=MS-02
+
+[subscriber-3]
+imsi=250990000000003
+msisdn=79990000003
+tmsi=0x09ABCDEF
+label=MS-03
+
+# MSRN пул (для MAP ProvideRoamingNumber)
+[vlr]
+msrn_prefix=79161000       # E.164 префикс
+msrn_range_start=100       # начало пула → 79161000100
+msrn_range_end=199         # конец пула  → 79161000199
 ```
 
 **vmsc_interfaces.conf** — интерфейсы и сетевые параметры (включая NTP):
