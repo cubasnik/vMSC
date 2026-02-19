@@ -5198,6 +5198,20 @@ static struct msgb *generate_bssmap_reset(uint8_t cause) {
     return msg;
 }
 
+// BSSMAP Reset Acknowledge (3GPP TS 48.008 §3.2.1.20)
+// BSC → MSC  —  подтверждение Reset (MSC ← BSC после Reset)
+static struct msgb *generate_bssmap_reset_ack() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSMAP ResetAck");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = 0x00;   // BSSAP discriminator (BSSMAP)
+    uint8_t *len_ptr = msgb_put(msg, 1);
+    *(msgb_put(msg, 1)) = 0x31;   // Reset Acknowledge
+    *len_ptr = msg->len - 2;
+    std::cout << COLOR_CYAN << "✓ BSSMAP Reset Acknowledge" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x31  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
 // ============================================================
 // P8: A-interface BSSMAP — Assignment, Clear, Paging
 // ============================================================
@@ -5257,6 +5271,26 @@ static struct msgb *generate_bssmap_assignment_complete() {
     std::cout << COLOR_CYAN << "✓ Сгенерировано BSSMAP Assignment Complete" << COLOR_RESET << "\n";
     std::cout << COLOR_BLUE << "  RR Cause: " << COLOR_GREEN << "0x00 (Normal event)" << COLOR_RESET << "\n";
     std::cout << COLOR_BLUE << "  Размер:   " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// BSSMAP Assignment Failure (3GPP TS 48.008 §3.2.1.3)
+// BSC → MSC  —  BSC не может назначить канал; содержит Cause IE
+static struct msgb *generate_bssmap_assignment_failure(uint8_t cause) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSMAP AssignFail");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = 0x00;   // BSSAP discriminator (BSSMAP)
+    uint8_t *len_ptr = msgb_put(msg, 1);
+    *(msgb_put(msg, 1)) = 0x03;   // Assignment Failure
+    // Cause IE: tag=0x04, len=1
+    *(msgb_put(msg, 1)) = 0x04;
+    *(msgb_put(msg, 1)) = 0x01;
+    *(msgb_put(msg, 1)) = cause;   // e.g. 0x20=radio interface not available
+    *len_ptr = msg->len - 2;
+    std::cout << COLOR_CYAN << "✓ BSSMAP Assignment Failure" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Cause:  " << COLOR_GREEN
+              << "0x" << std::hex << (int)cause << std::dec << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
     return msg;
 }
 
@@ -5343,6 +5377,42 @@ static struct msgb *generate_bssmap_paging(const char *imsi_str, uint16_t lac) {
 }
 
 // ============================================================
+
+// BSSMAP Classmark Request (3GPP TS 48.008 §3.2.1.19)
+// MSC → BSC  —  MSC запрашивает Classmark Information от MS
+static struct msgb *generate_bssmap_classmark_request() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSMAP ClassmarkReq");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = 0x00;   // BSSAP discriminator (BSSMAP)
+    uint8_t *len_ptr = msgb_put(msg, 1);
+    *(msgb_put(msg, 1)) = 0x55;   // Classmark Request
+    *len_ptr = msg->len - 2;
+    std::cout << COLOR_CYAN << "✓ BSSMAP Classmark Request" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x55  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// BSSMAP Classmark Update (3GPP TS 48.008 §3.2.1.20)
+// BSC → MSC  —  BSC передаёт Classmark Information MS (Mobile Station Classmark 2)
+// MS Classmark 2 IE: tag=0x12, len=3 (базовые возможности MS)
+static struct msgb *generate_bssmap_classmark_update() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSMAP ClassmarkUpd");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = 0x00;   // BSSAP discriminator (BSSMAP)
+    uint8_t *len_ptr = msgb_put(msg, 1);
+    *(msgb_put(msg, 1)) = 0x53;   // Classmark Update
+    // MS Classmark 2 IE: tag=0x12, len=3
+    *(msgb_put(msg, 1)) = 0x12;
+    *(msgb_put(msg, 1)) = 0x03;
+    *(msgb_put(msg, 1)) = 0x00;   // Classmark byte 1 (RF power level etc.)
+    *(msgb_put(msg, 1)) = 0x00;   // Classmark byte 2
+    *(msgb_put(msg, 1)) = 0x00;   // Classmark byte 3
+    *len_ptr = msg->len - 2;
+    std::cout << COLOR_CYAN << "✓ BSSMAP Classmark Update" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x53  MS Classmark 2 (3 bytes)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
 // P13: A-interface BSSMAP Handover (3GPP TS 48.008 §3.2.1.7–3.2.1.12)
 // ============================================================
 
@@ -5505,6 +5575,103 @@ static struct msgb *generate_bssmap_ho_candidate_enquiry(uint16_t lac) {
 
     std::cout << COLOR_CYAN << "✓ Сгенерировано BSSMAP Handover Candidate Enquiry" << COLOR_RESET << "\n";
     std::cout << COLOR_BLUE << "  LAC:    " << COLOR_GREEN << lac << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// BSSMAP Handover Request (3GPP TS 48.008 §3.2.1.8)
+// MSC → BSC (Target)  —  MSC запрашивает ресурсы в целевом BSC
+// Содержит: Channel Type IE + Encryption Information IE + Classmark IE + Cell ID IE
+static struct msgb *generate_bssmap_ho_request(uint8_t cause,
+                                                uint16_t lac,
+                                                uint16_t cell_id) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSMAP HO Request");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = 0x00;   // BSSAP discriminator (BSSMAP)
+    uint8_t *len_ptr = msgb_put(msg, 1);
+    *(msgb_put(msg, 1)) = 0x10;   // Handover Request
+
+    // Channel Type IE: tag=0x0B, len=3
+    *(msgb_put(msg, 1)) = 0x0B;
+    *(msgb_put(msg, 1)) = 0x03;
+    *(msgb_put(msg, 1)) = 0x01;   // Speech
+    *(msgb_put(msg, 1)) = 0x08;   // TCH/F
+    *(msgb_put(msg, 1)) = 0x01;   // FR v1
+
+    // Encryption Information IE: tag=0x0A, len=1 (no encryption)
+    *(msgb_put(msg, 1)) = 0x0A;
+    *(msgb_put(msg, 1)) = 0x01;
+    *(msgb_put(msg, 1)) = 0x01;   // Algorithm id A5/1, no key
+
+    // Cause IE: tag=0x04, len=1
+    *(msgb_put(msg, 1)) = 0x04;
+    *(msgb_put(msg, 1)) = 0x01;
+    *(msgb_put(msg, 1)) = cause;
+
+    // Cell Identifier IE (LAC+CI): tag=0x05, len=5
+    *(msgb_put(msg, 1)) = 0x05;
+    *(msgb_put(msg, 1)) = 0x05;
+    *(msgb_put(msg, 1)) = 0x01;   // discriminator: LAC+CI
+    *(msgb_put(msg, 1)) = (lac >> 8) & 0xFF;
+    *(msgb_put(msg, 1)) = lac & 0xFF;
+    *(msgb_put(msg, 1)) = (cell_id >> 8) & 0xFF;
+    *(msgb_put(msg, 1)) = cell_id & 0xFF;
+
+    *len_ptr = msg->len - 2;
+    std::cout << COLOR_CYAN << "✓ BSSMAP Handover Request" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Cause:     " << COLOR_GREEN
+              << "0x" << std::hex << (int)cause << std::dec << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Target LAC:  " << COLOR_GREEN << lac     << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Target Cell: " << COLOR_GREEN << cell_id << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер:      " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// BSSMAP Handover Request Acknowledge (3GPP TS 48.008 §3.2.1.9)
+// BSC (Target) → MSC  —  целевой BSC готов принять MS; содержит HO Reference
+// Layer 3 Information IE содержит RR Handover Command для MS
+static struct msgb *generate_bssmap_ho_request_ack(uint8_t ho_ref) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSMAP HO ReqAck");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = 0x00;   // BSSAP discriminator (BSSMAP)
+    uint8_t *len_ptr = msgb_put(msg, 1);
+    *(msgb_put(msg, 1)) = 0x13;   // Handover Request Acknowledge
+
+    // Layer 3 Information IE: tag=0x17 — minimal RR HO Command
+    uint8_t rr_ho_cmd[] = { 0x06, 0x2B, 0x10, 0x01, 0x05, 0x28, 0x01, ho_ref, 0x00 };
+    *(msgb_put(msg, 1)) = 0x17;
+    *(msgb_put(msg, 1)) = sizeof(rr_ho_cmd);
+    memcpy(msgb_put(msg, sizeof(rr_ho_cmd)), rr_ho_cmd, sizeof(rr_ho_cmd));
+
+    // Handover Reference IE: tag=0x36, len=1
+    *(msgb_put(msg, 1)) = 0x36;
+    *(msgb_put(msg, 1)) = 0x01;
+    *(msgb_put(msg, 1)) = ho_ref;
+
+    *len_ptr = msg->len - 2;
+    std::cout << COLOR_CYAN << "✓ BSSMAP Handover Request Acknowledge" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  HO Ref: " << COLOR_GREEN << (int)ho_ref << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// BSSMAP Handover Failure (3GPP TS 48.008 §3.2.1.13)
+// BSC (Target) → MSC  —  целевой BSC не может принять хендовер (ресурсы недоступны)
+// Cause IE обязателен
+static struct msgb *generate_bssmap_ho_failure(uint8_t cause) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSMAP HO Failure");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = 0x00;   // BSSAP discriminator (BSSMAP)
+    uint8_t *len_ptr = msgb_put(msg, 1);
+    *(msgb_put(msg, 1)) = 0x15;   // Handover Failure
+    // Cause IE: tag=0x04, len=1
+    *(msgb_put(msg, 1)) = 0x04;
+    *(msgb_put(msg, 1)) = 0x01;
+    *(msgb_put(msg, 1)) = cause;
+    *len_ptr = msg->len - 2;
+    std::cout << COLOR_CYAN << "✓ BSSMAP Handover Failure" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Cause:  " << COLOR_GREEN
+              << "0x" << std::hex << (int)cause << std::dec << COLOR_RESET << "\n";
     std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
     return msg;
 }
@@ -5834,6 +6001,41 @@ static struct msgb *generate_dtap_cc_alerting(uint8_t ti) {
     return msg;
 }
 
+// DTAP CC Progress (3GPP TS 24.008 §9.3.15)
+// MSC → MS   CC 0x03  — MSC передаёт информацию о ходе вызова (in-band info)
+// Progress IE: tag=0x1E, len=2 (location + progress description)
+// progress_desc: 0x08=inband information available, 0x01=call not end-to-end ISDN
+static struct msgb *generate_dtap_cc_progress(uint8_t ti, uint8_t progress_desc) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP CC Progress");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = (uint8_t)(GSM48_PDISC_CC | 0x80 | ((ti & 0x07) << 4));
+    *(msgb_put(msg, 1)) = GSM48_MT_CC_PROGRESS;
+    // Progress IE: tag=0x1E, len=2
+    *(msgb_put(msg, 1)) = 0x1E;
+    *(msgb_put(msg, 1)) = 0x02;
+    *(msgb_put(msg, 1)) = 0x82;   // ext=1, coding=CCITT, location=public-network-local-user
+    *(msgb_put(msg, 1)) = (uint8_t)(0x80 | (progress_desc & 0x7F));
+    std::cout << COLOR_CYAN << "✓ Сгенерировано DTAP CC Progress" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  TI:       " << COLOR_GREEN << (int)ti << " (MSC→MS)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Progress: " << COLOR_GREEN
+              << "0x" << std::hex << (int)progress_desc << std::dec << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер:   " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// DTAP CC Call Confirmed (3GPP TS 24.008 §9.3.2)
+// MS → MSC   CC 0x08  — MS подтверждает получение CC Setup (Mobile Terminating Call)
+static struct msgb *generate_dtap_cc_call_confirmed(uint8_t ti) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP CC CallConf");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = (uint8_t)(GSM48_PDISC_CC | ((ti & 0x07) << 4));
+    *(msgb_put(msg, 1)) = GSM48_MT_CC_CALL_CONF;
+    std::cout << COLOR_CYAN << "✓ Сгенерировано DTAP CC Call Confirmed" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  TI:     " << COLOR_GREEN << (int)ti << " (MS→MSC)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
 // DTAP CC Connect (3GPP TS 24.008 §9.3.5)
 // MS → MSC / MSC → MS   CC 0x07  — ответ (вызов установлен)
 // net_to_ms=true: MSC→MS (TI flag=1), false: MS→MSC (TI flag=0)
@@ -5860,6 +6062,69 @@ static struct msgb *generate_dtap_cc_connect_ack(uint8_t ti) {
     std::cout << COLOR_CYAN << "✓ Сгенерировано DTAP CC Connect Acknowledge" << COLOR_RESET << "\n";
     std::cout << COLOR_BLUE << "  TI:     " << COLOR_GREEN << (int)ti << COLOR_RESET << "\n";
     std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// DTAP CC Start DTMF (3GPP TS 24.008 §9.3.24)
+// MS → MSC   CC 0x35  — MS запрашивает передачу тонального набора (DTMF)
+// Keypad Facility IE: tag=0x2C, len=1, digit='0'-'9','*','#','A'-'D'
+static struct msgb *generate_dtap_cc_start_dtmf(uint8_t ti, char digit) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP CC StartDTMF");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = (uint8_t)(GSM48_PDISC_CC | ((ti & 0x07) << 4));
+    *(msgb_put(msg, 1)) = GSM48_MT_CC_START_DTMF;
+    // Keypad Facility IE: tag=0x2C, len=1
+    *(msgb_put(msg, 1)) = 0x2C;
+    *(msgb_put(msg, 1)) = 0x01;
+    *(msgb_put(msg, 1)) = (uint8_t)digit;
+    std::cout << COLOR_CYAN << "✓ Сгенерировано DTAP CC Start DTMF" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  TI:     " << COLOR_GREEN << (int)ti << " (MS→MSC)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Digit:  " << COLOR_GREEN << digit    << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// DTAP CC Stop DTMF (3GPP TS 24.008 §9.3.25)
+// MS → MSC   CC 0x31  — MS сообщает об окончании тонового набора
+static struct msgb *generate_dtap_cc_stop_dtmf(uint8_t ti) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP CC StopDTMF");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = (uint8_t)(GSM48_PDISC_CC | ((ti & 0x07) << 4));
+    *(msgb_put(msg, 1)) = GSM48_MT_CC_STOP_DTMF;
+    std::cout << COLOR_CYAN << "✓ Сгенерировано DTAP CC Stop DTMF" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  TI:     " << COLOR_GREEN << (int)ti << " (MS→MSC)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// DTAP CC Status (3GPP TS 24.008 §9.3.31)
+// MS ↔ MSC   CC 0x3D  — индикация текущего состояния CC в одной стороне
+// Обязательные IE: Cause + Call State
+// call_state: 0x00=null 0x01=call-initiated 0x03=mobile-originating-call-proc
+//             0x04=call-delivered 0x06=call-present 0x07=call-received
+//             0x08=connect-request 0x09=mobile-terminating-call-conf 0x0A=active
+static struct msgb *generate_dtap_cc_status(uint8_t ti, bool net_to_ms,
+                                             uint8_t cc_cause, uint8_t call_state) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP CC Status");
+    if (!msg) return nullptr;
+    uint8_t ti_flag = net_to_ms ? 0x80 : 0x00;
+    *(msgb_put(msg, 1)) = (uint8_t)(GSM48_PDISC_CC | ti_flag | ((ti & 0x07) << 4));
+    *(msgb_put(msg, 1)) = GSM48_MT_CC_STATUS;
+    // Cause IE: tag=0x08, len=2
+    *(msgb_put(msg, 1)) = 0x08;
+    *(msgb_put(msg, 1)) = 0x02;
+    *(msgb_put(msg, 1)) = 0x80;   // ext=1, coding=CCITT, location=user
+    *(msgb_put(msg, 1)) = (uint8_t)(0x80 | (cc_cause & 0x7F));
+    // Call State IE: tag=0xA4, len=1 (half-octet, no explicit length)
+    *(msgb_put(msg, 1)) = 0xA4;
+    *(msgb_put(msg, 1)) = (uint8_t)(call_state & 0x3F);
+    const char *dir = net_to_ms ? "MSC→MS" : "MS→MSC";
+    std::cout << COLOR_CYAN << "✓ Сгенерировано DTAP CC Status" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  TI:         " << COLOR_GREEN << (int)ti << " (" << dir << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Cause:      " << COLOR_GREEN << (int)cc_cause    << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Call State: " << COLOR_GREEN
+              << "0x" << std::hex << (int)call_state << std::dec << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер:     " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
     return msg;
 }
 
@@ -5926,6 +6191,67 @@ static struct msgb *generate_dtap_cc_release_complete(uint8_t ti, bool net_to_ms
     return msg;
 }
 
+
+// ============================================================
+// P23: DTAP SMS CP — Control Protocol (3GPP TS 24.011 §7.3)
+// PD = 0x09 (GSM48_PDISC_SMS), TI=1..7
+// ============================================================
+
+// DTAP SMS CP-DATA (3GPP TS 24.011 §7.3.1)
+// MS ↔ MSC   SMS 0x01  — перенос RPDU (RP-DATA) внутри CM layer
+// CP-User Data IE содержит RP-PDU (здесь — заглушка из 1 байта)
+static struct msgb *generate_dtap_sms_cp_data(uint8_t ti, bool net_to_ms) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP SMS CP-DATA");
+    if (!msg) return nullptr;
+    uint8_t ti_flag = net_to_ms ? 0x80 : 0x00;
+    *(msgb_put(msg, 1)) = (uint8_t)(GSM48_PDISC_SMS | ti_flag | ((ti & 0x07) << 4));
+    *(msgb_put(msg, 1)) = 0x01;   // CP-DATA
+    // CP-User Data IE: tag=0x01, len=1, data=0x00 (minimal RP-PDU placeholder)
+    *(msgb_put(msg, 1)) = 0x01;
+    *(msgb_put(msg, 1)) = 0x01;
+    *(msgb_put(msg, 1)) = 0x00;
+    const char *dir = net_to_ms ? "MSC→MS" : "MS→MSC";
+    std::cout << COLOR_CYAN << "✓ Сгенерировано DTAP SMS CP-DATA" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  TI:     " << COLOR_GREEN << (int)ti << " (" << dir << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// DTAP SMS CP-ACK (3GPP TS 24.011 §7.3.2)
+// MS ↔ MSC   SMS 0x04  — подтверждение приёма CP-DATA или CP-ERROR
+static struct msgb *generate_dtap_sms_cp_ack(uint8_t ti, bool net_to_ms) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP SMS CP-ACK");
+    if (!msg) return nullptr;
+    uint8_t ti_flag = net_to_ms ? 0x80 : 0x00;
+    *(msgb_put(msg, 1)) = (uint8_t)(GSM48_PDISC_SMS | ti_flag | ((ti & 0x07) << 4));
+    *(msgb_put(msg, 1)) = 0x04;   // CP-ACK
+    const char *dir = net_to_ms ? "MSC→MS" : "MS→MSC";
+    std::cout << COLOR_CYAN << "✓ Сгенерировано DTAP SMS CP-ACK" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  TI:     " << COLOR_GREEN << (int)ti << " (" << dir << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// DTAP SMS CP-ERROR (3GPP TS 24.011 §7.3.3)
+// MS ↔ MSC   SMS 0x10  — индикация ошибки в CP-layer
+// CP-Cause: 17=network failure 22=congestion 81=invalid TI 95=semantically incorrect
+static struct msgb *generate_dtap_sms_cp_error(uint8_t ti, uint8_t cp_cause) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP SMS CP-ERROR");
+    if (!msg) return nullptr;
+    // TI flag: in CP-ERROR the TI mirrors the received TI (same direction inversion)
+    *(msgb_put(msg, 1)) = (uint8_t)(GSM48_PDISC_SMS | ((ti & 0x07) << 4));
+    *(msgb_put(msg, 1)) = 0x10;   // CP-ERROR
+    // CP-Cause IE: tag=0x10, len=1
+    *(msgb_put(msg, 1)) = 0x10;
+    *(msgb_put(msg, 1)) = 0x01;
+    *(msgb_put(msg, 1)) = cp_cause;
+    std::cout << COLOR_CYAN << "✓ Сгенерировано DTAP SMS CP-ERROR" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  TI:      " << COLOR_GREEN << (int)ti << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  CP Cause: " << COLOR_GREEN
+              << "0x" << std::hex << (int)cp_cause << std::dec << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер:  " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
 int main(int argc, char** argv) {
     void *ctx = talloc_named_const(NULL, 0, "vmsc_context");
 
@@ -6135,6 +6461,29 @@ int main(int argc, char** argv) {
     uint8_t  ho_cause_param         = 0x58;   // --ho-cause: 0x58=better-cell (TS 48.008 Table 3.2.2.5)
     uint16_t ho_target_lac          = 0x0001; // --ho-lac:  целевой LAC
     uint16_t ho_target_cell         = 0x0001; // --ho-cell: целевой Cell ID
+    // P23: BSSMAP additional
+    bool     do_bssmap_reset_ack     = false;  // BSSMAP Reset Acknowledge      0x01
+    bool     do_bssmap_assign_fail   = false;  // BSSMAP Assignment Failure     0x03
+    uint8_t  assign_fail_cause_param = 0x20;   // --assign-fail-cause (TS 48.008 §3.2.2.5)
+    bool     do_bssmap_classmark_req = false;  // BSSMAP Classmark Request      0x55
+    bool     do_bssmap_classmark_upd = false;  // BSSMAP Classmark Update       0x53
+    bool     do_bssmap_ho_request    = false;  // BSSMAP Handover Request       0x10
+    bool     do_bssmap_ho_req_ack    = false;  // BSSMAP Handover Request Ack   0x13
+    uint8_t  ho_ref_param            = 0x01;   // --ho-ref: handover reference byte
+    bool     do_bssmap_ho_failure    = false;  // BSSMAP Handover Failure       0x15
+    // P23: DTAP CC additional + SMS CP
+    bool     do_dtap_cc_progress       = false;  // CC Progress                 0x03
+    uint8_t  progress_desc_param       = 0x08;   // --progress-desc (8=inband)
+    bool     do_dtap_cc_call_confirmed = false;  // CC Call Confirmed           0x08
+    bool     do_dtap_cc_start_dtmf     = false;  // CC Start DTMF              0x35
+    char     dtmf_digit_param          = '1';    // --dtmf-digit: DTMF digit char
+    bool     do_dtap_cc_stop_dtmf      = false;  // CC Stop DTMF              0x31
+    bool     do_dtap_cc_status         = false;  // CC Status                  0x3D
+    uint8_t  call_state_param          = 0x00;   // --call-state (0=null/idle)
+    bool     do_dtap_sms_cp_data       = false;  // SMS CP-DATA               0x01
+    bool     do_dtap_sms_cp_ack        = false;  // SMS CP-ACK                0x04
+    bool     do_dtap_sms_cp_error      = false;  // SMS CP-ERROR              0x10
+    uint8_t  cp_cause_param            = 0x11;   // --cp-cause (0x11=network failure)
     // P14: DTAP MM Supplementary (3GPP TS 24.008)
     bool     do_dtap_tmsi_realloc_cmd   = false;  // TMSI Reallocation Command   MM 0x1A
     bool     do_dtap_tmsi_realloc_compl = false;  // TMSI Reallocation Complete  MM 0x1B
@@ -7026,6 +7375,36 @@ int main(int argc, char** argv) {
         else if (arg == "--ho-cause"  && i + 1 < argc) ho_cause_param   = (uint8_t) std::stoul(argv[++i], nullptr, 0);
         else if (arg == "--ho-lac"    && i + 1 < argc) ho_target_lac    = (uint16_t)std::stoul(argv[++i]);
         else if (arg == "--ho-cell"   && i + 1 < argc) ho_target_cell   = (uint16_t)std::stoul(argv[++i]);
+        else if (arg == "--send-bssmap-reset-ack") {
+            do_bssmap_reset_ack = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-bssmap-assign-fail") {
+            do_bssmap_assign_fail = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--assign-fail-cause" && i + 1 < argc) assign_fail_cause_param = (uint8_t)std::stoul(argv[++i], nullptr, 0);
+        else if (arg == "--send-bssmap-classmark-req") {
+            do_bssmap_classmark_req = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-bssmap-classmark-upd") {
+            do_bssmap_classmark_upd = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-bssmap-ho-request") {
+            do_bssmap_ho_request = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-bssmap-ho-req-ack") {
+            do_bssmap_ho_req_ack = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--ho-ref" && i + 1 < argc) ho_ref_param = (uint8_t)std::stoul(argv[++i], nullptr, 0);
+        else if (arg == "--send-bssmap-ho-failure") {
+            do_bssmap_ho_failure = true;
+            do_lu = false;  do_paging = false;
+        }
         // ── P14: DTAP MM Supplementary ───────────────────────────────────────
         else if (arg == "--send-dtap-tmsi-realloc-cmd") {
             do_dtap_tmsi_realloc_cmd = true;
@@ -7102,6 +7481,42 @@ int main(int argc, char** argv) {
         else if (arg == "--ti"        && i + 1 < argc) ti_param        = (uint8_t)std::stoul(argv[++i]);
         else if (arg == "--cc-cause"  && i + 1 < argc) cc_cause_param  = (uint8_t)std::stoul(argv[++i]);
         else if (arg == "--ms-to-net") cc_net_to_ms = false;
+        else if (arg == "--send-dtap-cc-progress") {
+            do_dtap_cc_progress = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--progress-desc" && i + 1 < argc) progress_desc_param = (uint8_t)std::stoul(argv[++i], nullptr, 0);
+        else if (arg == "--send-dtap-cc-call-confirmed") {
+            do_dtap_cc_call_confirmed = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-dtap-cc-start-dtmf") {
+            do_dtap_cc_start_dtmf = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--dtmf-digit" && i + 1 < argc) dtmf_digit_param = argv[++i][0];
+        else if (arg == "--send-dtap-cc-stop-dtmf") {
+            do_dtap_cc_stop_dtmf = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-dtap-cc-status") {
+            do_dtap_cc_status = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--call-state" && i + 1 < argc) call_state_param = (uint8_t)std::stoul(argv[++i], nullptr, 0);
+        else if (arg == "--send-dtap-sms-cp-data") {
+            do_dtap_sms_cp_data = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-dtap-sms-cp-ack") {
+            do_dtap_sms_cp_ack = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-dtap-sms-cp-error") {
+            do_dtap_sms_cp_error = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--cp-cause" && i + 1 < argc) cp_cause_param = (uint8_t)std::stoul(argv[++i], nullptr, 0);
         else if (arg == "--rand"       && i + 1 < argc) rand_param        = argv[++i];
         else if (arg == "--sres"       && i + 1 < argc) sres_param        = argv[++i];
         else if (arg == "--cksn"       && i + 1 < argc) cksn_param        = (uint8_t)std::stoul(argv[++i]);
@@ -9622,6 +10037,126 @@ int main(int argc, char** argv) {
         }
     }
 
+
+    // ── P23: BSSMAP additional ──────────────────────────────────────────────────
+    if (do_bssmap_reset_ack) {
+        print_section_header("[BSSMAP Reset Acknowledge]", "A-interface  (MSC → BSC)  MT=0x31");
+        std::cout << "\n";
+        struct msgb *bssmap_msg = generate_bssmap_reset_ack();
+        if (bssmap_msg) {
+            if (send_udp) {
+                struct msgb *sccp_msg = wrap_in_sccp_cr(bssmap_msg, a_ssn);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, m3ua_opc, m3ua_dpc, m3ua_ni, a_si, mp, sls);
+                    if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, remote_ip.c_str(), remote_port); msgb_free(m3ua_msg); }
+                    msgb_free(sccp_msg);
+                }
+            }
+            msgb_free(bssmap_msg);
+        }
+    }
+
+    if (do_bssmap_assign_fail) {
+        print_section_header("[BSSMAP Assignment Failure]", "A-interface  (BSC → MSC)  MT=0x03");
+        std::cout << "\n";
+        struct msgb *bssmap_msg = generate_bssmap_assignment_failure(assign_fail_cause_param);
+        if (bssmap_msg) {
+            if (send_udp) {
+                struct msgb *sccp_msg = wrap_in_sccp_cr(bssmap_msg, a_ssn);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, m3ua_opc, m3ua_dpc, m3ua_ni, a_si, mp, sls);
+                    if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, remote_ip.c_str(), remote_port); msgb_free(m3ua_msg); }
+                    msgb_free(sccp_msg);
+                }
+            }
+            msgb_free(bssmap_msg);
+        }
+    }
+
+    if (do_bssmap_classmark_req) {
+        print_section_header("[BSSMAP Classmark Request]", "A-interface  (MSC → BSC)  MT=0x54");
+        std::cout << "\n";
+        struct msgb *bssmap_msg = generate_bssmap_classmark_request();
+        if (bssmap_msg) {
+            if (send_udp) {
+                struct msgb *sccp_msg = wrap_in_sccp_cr(bssmap_msg, a_ssn);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, m3ua_opc, m3ua_dpc, m3ua_ni, a_si, mp, sls);
+                    if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, remote_ip.c_str(), remote_port); msgb_free(m3ua_msg); }
+                    msgb_free(sccp_msg);
+                }
+            }
+            msgb_free(bssmap_msg);
+        }
+    }
+
+    if (do_bssmap_classmark_upd) {
+        print_section_header("[BSSMAP Classmark Update]", "A-interface  (BSC → MSC)  MT=0x53");
+        std::cout << "\n";
+        struct msgb *bssmap_msg = generate_bssmap_classmark_update();
+        if (bssmap_msg) {
+            if (send_udp) {
+                struct msgb *sccp_msg = wrap_in_sccp_cr(bssmap_msg, a_ssn);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, m3ua_opc, m3ua_dpc, m3ua_ni, a_si, mp, sls);
+                    if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, remote_ip.c_str(), remote_port); msgb_free(m3ua_msg); }
+                    msgb_free(sccp_msg);
+                }
+            }
+            msgb_free(bssmap_msg);
+        }
+    }
+
+    if (do_bssmap_ho_request) {
+        print_section_header("[BSSMAP Handover Request]", "A-interface  (MSC → BSC Target)  MT=0x10");
+        std::cout << "\n";
+        struct msgb *bssmap_msg = generate_bssmap_ho_request(ho_cause_param, ho_target_lac, ho_target_cell);
+        if (bssmap_msg) {
+            if (send_udp) {
+                struct msgb *sccp_msg = wrap_in_sccp_cr(bssmap_msg, a_ssn);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, m3ua_opc, m3ua_dpc, m3ua_ni, a_si, mp, sls);
+                    if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, remote_ip.c_str(), remote_port); msgb_free(m3ua_msg); }
+                    msgb_free(sccp_msg);
+                }
+            }
+            msgb_free(bssmap_msg);
+        }
+    }
+
+    if (do_bssmap_ho_req_ack) {
+        print_section_header("[BSSMAP Handover Request Acknowledge]", "A-interface  (BSC Target → MSC)  MT=0x13");
+        std::cout << "\n";
+        struct msgb *bssmap_msg = generate_bssmap_ho_request_ack(ho_ref_param);
+        if (bssmap_msg) {
+            if (send_udp) {
+                struct msgb *sccp_msg = wrap_in_sccp_cr(bssmap_msg, a_ssn);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, m3ua_opc, m3ua_dpc, m3ua_ni, a_si, mp, sls);
+                    if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, remote_ip.c_str(), remote_port); msgb_free(m3ua_msg); }
+                    msgb_free(sccp_msg);
+                }
+            }
+            msgb_free(bssmap_msg);
+        }
+    }
+
+    if (do_bssmap_ho_failure) {
+        print_section_header("[BSSMAP Handover Failure]", "A-interface  (BSC Target → MSC)  MT=0x1C");
+        std::cout << "\n";
+        struct msgb *bssmap_msg = generate_bssmap_ho_failure(ho_cause_param);
+        if (bssmap_msg) {
+            if (send_udp) {
+                struct msgb *sccp_msg = wrap_in_sccp_cr(bssmap_msg, a_ssn);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, m3ua_opc, m3ua_dpc, m3ua_ni, a_si, mp, sls);
+                    if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, remote_ip.c_str(), remote_port); msgb_free(m3ua_msg); }
+                    msgb_free(sccp_msg);
+                }
+            }
+            msgb_free(bssmap_msg);
+        }
+    }
     // ── P9: DTAP CC / MM — управление вызовом ──────────────────────────────
 
     // Вспомогательный макрос-лямбда: DTAP→BSSAP→SCCP CR→M3UA→UDP
@@ -9705,6 +10240,42 @@ int main(int argc, char** argv) {
                     "[DTAP CC Release Complete]", cc_net_to_ms
                         ? "A-interface  (MSC → MS)" : "A-interface  (MS → MSC)");
 
+
+    // P23: DTAP CC additional + SMS CP layer (A-interface)
+    if (do_dtap_cc_progress)
+        send_dtap_a(generate_dtap_cc_progress(ti_param, progress_desc_param),
+                    "[DTAP CC Progress]", "A-interface  (MSC → MS)");
+
+    if (do_dtap_cc_call_confirmed)
+        send_dtap_a(generate_dtap_cc_call_confirmed(ti_param),
+                    "[DTAP CC Call Confirmed]", "A-interface  (MS → MSC)");
+
+    if (do_dtap_cc_start_dtmf)
+        send_dtap_a(generate_dtap_cc_start_dtmf(ti_param, dtmf_digit_param),
+                    "[DTAP CC Start DTMF]", "A-interface  (MS → MSC)");
+
+    if (do_dtap_cc_stop_dtmf)
+        send_dtap_a(generate_dtap_cc_stop_dtmf(ti_param),
+                    "[DTAP CC Stop DTMF]", "A-interface  (MS → MSC)");
+
+    if (do_dtap_cc_status)
+        send_dtap_a(generate_dtap_cc_status(ti_param, cc_net_to_ms, cc_cause_param, call_state_param),
+                    "[DTAP CC Status]", cc_net_to_ms
+                        ? "A-interface  (MSC → MS)" : "A-interface  (MS → MSC)");
+
+    if (do_dtap_sms_cp_data)
+        send_dtap_a(generate_dtap_sms_cp_data(ti_param, cc_net_to_ms),
+                    "[DTAP SMS CP-DATA]", cc_net_to_ms
+                        ? "A-interface  (MSC → MS)" : "A-interface  (MS → MSC)");
+
+    if (do_dtap_sms_cp_ack)
+        send_dtap_a(generate_dtap_sms_cp_ack(ti_param, cc_net_to_ms),
+                    "[DTAP SMS CP-ACK]", cc_net_to_ms
+                        ? "A-interface  (MSC → MS)" : "A-interface  (MS → MSC)");
+
+    if (do_dtap_sms_cp_error)
+        send_dtap_a(generate_dtap_sms_cp_error(ti_param, cp_cause_param),
+                    "[DTAP SMS CP-ERROR]", "A-interface");
     // ── P14: DTAP MM Supplementary ──────────────────────────────────────────
 
     if (do_dtap_tmsi_realloc_cmd)
