@@ -9398,6 +9398,101 @@ static struct msgb *generate_bssmap_unblock_ack(uint16_t cic) {
     return msg;
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// P40: BSSMAP Circuit Group Block — 3GPP TS 48.008 §3.2.1.36
+// MT=0x44 (68)  BSS → MSC  — блокировка группы схем (circuit group)
+// Circuit Identity Code IE (ref circuit) + Circuit Identity Code List IE
+// ──────────────────────────────────────────────────────────────────────
+static struct msgb *generate_bssmap_circuit_group_block(uint16_t cic, uint8_t bitmap) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSMAP CG Block");
+    if (!msg) return nullptr;
+    uint8_t *len_ptr = msgb_put(msg, 2);
+    len_ptr[0] = 0x00; len_ptr[1] = 0x00;
+    *(msgb_put(msg, 1)) = 68;   // BSS_MAP_MSG_CGB (0x44)
+    // Circuit Identity Code IE (tag=0x01, len=2): reference CIC
+    *(msgb_put(msg, 1)) = 0x01; *(msgb_put(msg, 1)) = 0x02;
+    *(msgb_put(msg, 1)) = (uint8_t)(cic & 0xFF);
+    *(msgb_put(msg, 1)) = (uint8_t)((cic >> 8) & 0x07);
+    // Circuit Identity Code List IE (tag=0x12, len=1, bitmap)
+    *(msgb_put(msg, 1)) = 0x12; *(msgb_put(msg, 1)) = 0x01;
+    *(msgb_put(msg, 1)) = bitmap;
+    len_ptr[1] = (uint8_t)(msg->len - 2);
+    std::cout << COLOR_CYAN << "\u2713 BSSMAP Circuit Group Block" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x44(68)  CIC=" << COLOR_GREEN << cic
+              << COLOR_BLUE << "  Bitmap=0x" << std::hex << (int)bitmap << std::dec << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// P40: BSSMAP Circuit Group Blocking Acknowledge — 3GPP TS 48.008 §3.2.1.37
+// MT=0x45 (69)  MSC → BSS  — подтверждение блокировки группы схем
+// ──────────────────────────────────────────────────────────────────────
+static struct msgb *generate_bssmap_circuit_group_block_ack(uint16_t cic, uint8_t bitmap) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSMAP CG BlockAck");
+    if (!msg) return nullptr;
+    uint8_t *len_ptr = msgb_put(msg, 2);
+    len_ptr[0] = 0x00; len_ptr[1] = 0x00;
+    *(msgb_put(msg, 1)) = 69;   // BSS_MAP_MSG_CGB_ACKNOWLEDGE (0x45)
+    *(msgb_put(msg, 1)) = 0x01; *(msgb_put(msg, 1)) = 0x02;
+    *(msgb_put(msg, 1)) = (uint8_t)(cic & 0xFF);
+    *(msgb_put(msg, 1)) = (uint8_t)((cic >> 8) & 0x07);
+    *(msgb_put(msg, 1)) = 0x12; *(msgb_put(msg, 1)) = 0x01;
+    *(msgb_put(msg, 1)) = bitmap;
+    len_ptr[1] = (uint8_t)(msg->len - 2);
+    std::cout << COLOR_CYAN << "\u2713 BSSMAP Circuit Group Blocking Acknowledge" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x45(69)  CIC=" << COLOR_GREEN << cic
+              << COLOR_BLUE << "  Bitmap=0x" << std::hex << (int)bitmap << std::dec << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// P40: BSSMAP Circuit Group Unblock — 3GPP TS 48.008 §3.2.1.38
+// MT=0x46 (70)  BSS → MSC  — снятие блокировки группы схем
+// ──────────────────────────────────────────────────────────────────────
+static struct msgb *generate_bssmap_circuit_group_unblock(uint16_t cic, uint8_t bitmap) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSMAP CG Unblock");
+    if (!msg) return nullptr;
+    uint8_t *len_ptr = msgb_put(msg, 2);
+    len_ptr[0] = 0x00; len_ptr[1] = 0x00;
+    *(msgb_put(msg, 1)) = 70;   // BSS_MAP_MSG_CGUB (0x46)
+    *(msgb_put(msg, 1)) = 0x01; *(msgb_put(msg, 1)) = 0x02;
+    *(msgb_put(msg, 1)) = (uint8_t)(cic & 0xFF);
+    *(msgb_put(msg, 1)) = (uint8_t)((cic >> 8) & 0x07);
+    *(msgb_put(msg, 1)) = 0x12; *(msgb_put(msg, 1)) = 0x01;
+    *(msgb_put(msg, 1)) = bitmap;
+    len_ptr[1] = (uint8_t)(msg->len - 2);
+    std::cout << COLOR_CYAN << "\u2713 BSSMAP Circuit Group Unblock" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x46(70)  CIC=" << COLOR_GREEN << cic
+              << COLOR_BLUE << "  Bitmap=0x" << std::hex << (int)bitmap << std::dec << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// P40: BSSMAP Circuit Group Unblocking Acknowledge — 3GPP TS 48.008 §3.2.1.39
+// MT=0x47 (71)  MSC → BSS  — подтверждение снятия блокировки группы схем
+// ──────────────────────────────────────────────────────────────────────
+static struct msgb *generate_bssmap_circuit_group_unblock_ack(uint16_t cic, uint8_t bitmap) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSMAP CG UnblkAck");
+    if (!msg) return nullptr;
+    uint8_t *len_ptr = msgb_put(msg, 2);
+    len_ptr[0] = 0x00; len_ptr[1] = 0x00;
+    *(msgb_put(msg, 1)) = 71;   // BSS_MAP_MSG_CGUB_ACKNOWLEDGE (0x47)
+    *(msgb_put(msg, 1)) = 0x01; *(msgb_put(msg, 1)) = 0x02;
+    *(msgb_put(msg, 1)) = (uint8_t)(cic & 0xFF);
+    *(msgb_put(msg, 1)) = (uint8_t)((cic >> 8) & 0x07);
+    *(msgb_put(msg, 1)) = 0x12; *(msgb_put(msg, 1)) = 0x01;
+    *(msgb_put(msg, 1)) = bitmap;
+    len_ptr[1] = (uint8_t)(msg->len - 2);
+    std::cout << COLOR_CYAN << "\u2713 BSSMAP Circuit Group Unblocking Acknowledge" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x47(71)  CIC=" << COLOR_GREEN << cic
+              << COLOR_BLUE << "  Bitmap=0x" << std::hex << (int)bitmap << std::dec << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
 // ============================================================
 // P14: A-interface DTAP MM Supplementary
 //      (3GPP TS 24.008 §9.2.26, §9.2.27, §9.2.18, §9.1.9)
@@ -9494,6 +9589,171 @@ static struct msgb *generate_dtap_mm_information(uint8_t tz_byte) {
     std::cout << COLOR_BLUE << "  Размер:        " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
     return msg;
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// P40: DTAP MM Authentication Request — 3GPP TS 24.008 §9.2.3
+// MT=0x12  MSC → MS  — запрос аутентификации (RAND, CKSN)
+// ──────────────────────────────────────────────────────────────────────
+static struct msgb *generate_dtap_mm_auth_req(uint8_t cksn) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP MM Auth Req");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = GSM48_PDISC_MM;
+    *(msgb_put(msg, 1)) = GSM48_MT_MM_AUTH_REQ;  // 0x12
+    // Octet3: spare(4b) | CKSN(4b) — Ciphering Key Sequence Number
+    *(msgb_put(msg, 1)) = (uint8_t)(cksn & 0x07);
+    // RAND (16 bytes) — GSM test vector
+    static const uint8_t rand_val[16] = {
+        0x23,0x55,0x3C,0xBE,0x96,0x37,0xA8,0x9D,
+        0x21,0x8A,0xE6,0x4D,0xAE,0x47,0xBF,0x35
+    };
+    memcpy(msgb_put(msg, 16), rand_val, 16);
+    std::cout << COLOR_CYAN << "\u2713 DTAP MM Authentication Request" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x12  CKSN=" << COLOR_GREEN << (int)cksn << "  MSC\u2192MS" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  RAND[0..3]: " << COLOR_GREEN
+              << std::hex << std::setw(2) << std::setfill('0') << (int)rand_val[0]
+              << std::setw(2) << (int)rand_val[1]
+              << std::setw(2) << (int)rand_val[2]
+              << std::setw(2) << (int)rand_val[3] << "..."
+              << std::dec << std::setfill(' ') << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// P40: DTAP MM Authentication Response — 3GPP TS 24.008 §9.2.4
+// MT=0x14  MS → MSC  — ответ аутентификации (SRES)
+// ──────────────────────────────────────────────────────────────────────
+static struct msgb *generate_dtap_mm_auth_resp(void) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP MM Auth Resp");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = GSM48_PDISC_MM;
+    *(msgb_put(msg, 1)) = GSM48_MT_MM_AUTH_RESP;  // 0x14
+    // SRES (4 bytes) — Signed Response (GSM A3/A8 test vector result)
+    static const uint8_t sres[4] = { 0xA5, 0x4F, 0x2D, 0x1C };
+    memcpy(msgb_put(msg, 4), sres, 4);
+    std::cout << COLOR_CYAN << "\u2713 DTAP MM Authentication Response" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x14  MS\u2192MSC  SRES=0x"
+              << COLOR_GREEN << std::hex
+              << std::setw(2) << std::setfill('0') << (int)sres[0]
+              << std::setw(2) << (int)sres[1]
+              << std::setw(2) << (int)sres[2]
+              << std::setw(2) << (int)sres[3]
+              << std::dec << std::setfill(' ') << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// P40: DTAP MM Identity Request — 3GPP TS 24.008 §9.2.10a
+// MT=0x18  MSC → MS  — запрос идентификатора (IMSI/IMEI/IMEISV)
+// id_type: 1=IMSI 2=IMEI 3=IMEISV 4=TMSI
+// ──────────────────────────────────────────────────────────────────────
+static struct msgb *generate_dtap_mm_id_req(uint8_t id_type) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP MM ID Req");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = GSM48_PDISC_MM;
+    *(msgb_put(msg, 1)) = GSM48_MT_MM_ID_REQ;   // 0x18
+    // Identity type (3 bits, lower nibble; upper nibble = spare)
+    *(msgb_put(msg, 1)) = (uint8_t)(id_type & 0x07);
+    const char *type_name = (id_type==1)?"IMSI":(id_type==2)?"IMEI":
+                            (id_type==3)?"IMEISV":(id_type==4)?"TMSI":"Unknown";
+    std::cout << COLOR_CYAN << "\u2713 DTAP MM Identity Request" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x18  MSC\u2192MS  Type=" << COLOR_GREEN << type_name << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// P40: DTAP MM Identity Response — 3GPP TS 24.008 §9.2.11
+// MT=0x19  MS → MSC  — ответ с идентификатором (Mobile Identity LV)
+// ──────────────────────────────────────────────────────────────────────
+static struct msgb *generate_dtap_mm_id_resp(const char *imsi_str) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP MM ID Resp");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = GSM48_PDISC_MM;
+    *(msgb_put(msg, 1)) = GSM48_MT_MM_ID_RESP;  // 0x19
+    // Mobile identity (LV, no IEI): type=IMSI, BCD-encoded
+    size_t slen = strlen(imsi_str);
+    uint8_t bcd[9]; memset(bcd, 0xFF, sizeof(bcd));
+    uint8_t blen = 1;
+    bcd[0] = (uint8_t)(0x01 | (((slen % 2) == 1) ? 0x08 : 0x00));  // IMSI, odd/even
+    for (size_t i = 0; i < slen && blen < 9; i += 2) {
+        uint8_t lo = (uint8_t)(imsi_str[i] - '0');
+        uint8_t hi = (i + 1 < slen) ? (uint8_t)(imsi_str[i + 1] - '0') : 0x0F;
+        bcd[blen++] = (uint8_t)((hi << 4) | lo);
+    }
+    *(msgb_put(msg, 1)) = blen;          // length
+    memcpy(msgb_put(msg, blen), bcd, blen);
+    std::cout << COLOR_CYAN << "\u2713 DTAP MM Identity Response" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x19  MS\u2192MSC  IMSI=" << COLOR_GREEN << imsi_str << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// P40: DTAP MM Location Updating Accept — 3GPP TS 24.008 §9.2.13
+// MT=0x02  MSC → MS  — подтверждение обновления местоположения
+// Содержит LAI (5 bytes) + опционально Mobile Identity (TMSI)
+// ──────────────────────────────────────────────────────────────────────
+static struct msgb *generate_dtap_mm_lu_accept(uint16_t mcc, uint16_t mnc,
+                                                uint16_t lac, uint32_t tmsi) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP MM LU Accept");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = GSM48_PDISC_MM;
+    *(msgb_put(msg, 1)) = GSM48_MT_MM_LOC_UPD_ACCEPT;  // 0x02
+    // Location Area Identification (5 bytes)
+    uint8_t lai[5];
+    lai[0] = (uint8_t)((mcc / 100) | (((mcc / 10) % 10) << 4));
+    lai[1] = (uint8_t)((mcc % 10) | (0xF << 4));
+    lai[2] = (uint8_t)(((mnc / 10) % 10) | ((mnc % 10) << 4));
+    lai[3] = (uint8_t)(lac >> 8);
+    lai[4] = (uint8_t)(lac & 0xFF);
+    memcpy(msgb_put(msg, 5), lai, 5);
+    // Mobile Identity IE (TMSI): IEI=0x17, len=5
+    *(msgb_put(msg, 1)) = 0x17;   // IEI Mobile Identity
+    *(msgb_put(msg, 1)) = 0x05;   // len = 5
+    *(msgb_put(msg, 1)) = 0xF4;   // filler(0xF) | OE=0 | type=TMSI(4)
+    *(msgb_put(msg, 1)) = (uint8_t)(tmsi >> 24);
+    *(msgb_put(msg, 1)) = (uint8_t)(tmsi >> 16);
+    *(msgb_put(msg, 1)) = (uint8_t)(tmsi >>  8);
+    *(msgb_put(msg, 1)) = (uint8_t)(tmsi);
+    std::cout << COLOR_CYAN << "\u2713 DTAP MM Location Updating Accept" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x02  MSC\u2192MS  MCC=" << COLOR_GREEN << mcc
+              << COLOR_BLUE << " MNC=" << COLOR_GREEN << mnc
+              << COLOR_BLUE << " LAC=" << COLOR_GREEN << lac << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  TMSI:    " << COLOR_GREEN
+              << "0x" << std::hex << std::uppercase << tmsi
+              << std::dec << std::nouppercase << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// P40: DTAP MM Location Updating Reject — 3GPP TS 24.008 §9.2.14
+// MT=0x04  MSC → MS  — отказ в обновлении местоположения (причина)
+// cause: 0x03=Illegal MS, 0x06=Illegal ME, 0x0B=PLMN not allowed,
+//        0x0C=LA not allowed, 0x0F=No suitable cells, 0x11=Network failure
+// ──────────────────────────────────────────────────────────────────────
+static struct msgb *generate_dtap_mm_lu_reject(uint8_t cause) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP MM LU Reject");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = GSM48_PDISC_MM;
+    *(msgb_put(msg, 1)) = GSM48_MT_MM_LOC_UPD_REJECT;  // 0x04
+    // Reject cause (1 byte, mandatory, no tag)
+    *(msgb_put(msg, 1)) = cause;
+    const char *cs = (cause==0x03)?"Illegal MS":
+                     (cause==0x06)?"Illegal ME":
+                     (cause==0x0B)?"PLMN not allowed":
+                     (cause==0x0C)?"LA not allowed":
+                     (cause==0x0F)?"No suitable cells":
+                     (cause==0x11)?"Network failure":"Other";
+    std::cout << COLOR_CYAN << "\u2713 DTAP MM Location Updating Reject" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x04  MSC\u2192MS  Cause=" << COLOR_GREEN
+              << (int)cause << " (" << cs << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
 
 // DTAP Ciphering Mode Complete (3GPP TS 24.008 §9.1.9  / TS 44.018 §9.1.9)
 // MS → MSC  —  ответ на Ciphering Mode Command (P6), шифрование включено
@@ -10298,7 +10558,115 @@ static struct msgb *generate_dtap_rr_system_information_type13(void) {
     std::cout << COLOR_CYAN << "\u2713 DTAP RR System Information Type 13" << COLOR_RESET << "\n";
     std::cout << COLOR_BLUE << "  MT=0x00  PD=0x06  (BCCH Ext, network\u2192MS)" << COLOR_RESET << "\n\n";
     return msg;
+
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// P40: DTAP RR Configuration Change Acknowledge — 3GPP TS 44.018 §9.1.12c
+// MT=0x31  MS → Network  — подтверждение команды смены конфигурации
+// ──────────────────────────────────────────────────────────────────────
+static struct msgb *generate_dtap_rr_cfg_change_ack(void) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP RR CfgChgAck");
+    if (!msg) return nullptr;
+    uint8_t *p = msgb_put(msg, 2);
+    p[0] = 0x06; p[1] = GSM48_MT_RR_CFG_CHG_ACK;   // PD=RR, MT=0x31
+    std::cout << COLOR_CYAN << "\u2713 DTAP RR Configuration Change Acknowledge" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x31  PD=0x06  MS\u2192network" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// P40: DTAP RR Configuration Change Reject — 3GPP TS 44.018 §9.1.12d
+// MT=0x33  MS → Network  — отказ от смены конфигурации (RR Cause)
+// ──────────────────────────────────────────────────────────────────────
+static struct msgb *generate_dtap_rr_cfg_change_reject(uint8_t cause) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP RR CfgChgRej");
+    if (!msg) return nullptr;
+    uint8_t *p = msgb_put(msg, 3);
+    p[0] = 0x06; p[1] = GSM48_MT_RR_CFG_CHG_REJ;   // PD=RR, MT=0x33
+    p[2] = cause;   // RR Cause (1 byte): 0x00=normal, 0x41=chan unacceptable
+    const char *cs = (cause==0x00)?"Normal event":
+                     (cause==0x41)?"Channel unacceptable":
+                     (cause==0x61)?"Protocol error":"Other";
+    std::cout << COLOR_CYAN << "\u2713 DTAP RR Configuration Change Reject" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x33  Cause=" << COLOR_GREEN << (int)cause
+              << " (" << cs << ")" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// P40: DTAP RR Uplink Free — 3GPP TS 44.018 §9.1.47a
+// MT=0x0C  Network → MS  — канал восходящей линии свободен (VGCS)
+// ──────────────────────────────────────────────────────────────────────
+static struct msgb *generate_dtap_rr_uplink_free(void) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP RR Uplink Free");
+    if (!msg) return nullptr;
+    uint8_t *p = msgb_put(msg, 2);
+    p[0] = 0x06; p[1] = GSM48_MT_RR_UPLINK_FREE;   // PD=RR, MT=0x0C
+    std::cout << COLOR_CYAN << "\u2713 DTAP RR Uplink Free" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x0C  PD=0x06  network\u2192MS (VGCS/VBS)" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// P40: DTAP RR Notification/FACCH — 3GPP TS 44.018 §9.1.22a
+// MT=0x25  Network → MS  — уведомление через FACCH о VGCS/VBS вызове
+// ──────────────────────────────────────────────────────────────────────
+static struct msgb *generate_dtap_rr_notification_facch(void) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP RR Notif FACCH");
+    if (!msg) return nullptr;
+    uint8_t *p = msgb_put(msg, 2);
+    p[0] = 0x06; p[1] = GSM48_MT_RR_NOTIF_FACCH;   // PD=RR, MT=0x25
+    std::cout << COLOR_CYAN << "\u2713 DTAP RR Notification/FACCH" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x25  PD=0x06  network\u2192MS (VGCS/VBS via FACCH)" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// P40: DTAP RR Immediate Assignment Extended — 3GPP TS 44.018 §9.1.18a
+// MT=0x39  Network → MS  — двойное немедленное назначение (2 канала)
+// Содержит Page Mode, два Channel Description + Request Reference + TA
+// ──────────────────────────────────────────────────────────────────────
+static struct msgb *generate_dtap_rr_immediate_assignment_ext(uint16_t arfcn, uint8_t ts) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP RR IMM ASS EXT");
+    if (!msg) return nullptr;
+    uint8_t *p = msgb_put(msg, 16);
+    p[0] = 0x06; p[1] = GSM48_MT_RR_IMM_ASS_EXT;   // PD=RR, MT=0x39
+    // Page Mode (4 bits) | Feature Indicator (4 bits)
+    p[2] = 0x00;   // normal paging, no hopping
+    // Channel Description 1 (3 bytes): chan type/timeslot | ARFCN high | ARFCN low
+    // Chan Type: 0x01=TCH/F, timeslot ts
+    p[3] = (uint8_t)(0x08 | (ts & 0x07));   // 000 01 ts[2:0] → TCH/F, slot ts
+    p[4] = (uint8_t)(((arfcn >> 8) & 0x03) | 0x00);
+    p[5] = (uint8_t)(arfcn & 0xFF);
+    // Request Reference 1 (3 bytes): RA | T1'(5b)|T3(3b) | T2(5b)
+    p[6] = 0x00; p[7] = 0x00; p[8] = 0x00;
+    // Timing Advance 1 (1 byte)
+    p[9] = 0x00;
+    // Channel Description 2 (3 bytes): same channel, second assignment
+    p[10] = p[3]; p[11] = p[4]; p[12] = p[5];
+    // Request Reference 2 (3 bytes)
+    p[13] = 0x00; p[14] = 0x00; p[15] = 0x00;
+    std::cout << COLOR_CYAN << "\u2713 DTAP RR Immediate Assignment Extended" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x39  ARFCN=" << COLOR_GREEN << arfcn
+              << COLOR_BLUE << "  TS=" << COLOR_GREEN << (int)ts << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// P40: DTAP RR Initial Request — 3GPP TS 44.018 §9.1.19a
+// MT=0x3C  MS → Network  — инициальный запрос ресурсов (GPRS/DTM)
+// ──────────────────────────────────────────────────────────────────────
+static struct msgb *generate_dtap_rr_init_req(void) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP RR Init Req");
+    if (!msg) return nullptr;
+    uint8_t *p = msgb_put(msg, 2);
+    p[0] = 0x06; p[1] = GSM48_MT_RR_INIT_REQ;   // PD=RR, MT=0x3C
+    std::cout << COLOR_CYAN << "\u2713 DTAP RR Initial Request" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x3C  PD=0x06  MS\u2192network (GPRS/DTM resource request)" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
 
 
 
@@ -11761,6 +12129,11 @@ int main(int argc, char** argv) {
     bool     do_bssmap_block_ack                  = false; // BSSMAP Blocking Acknowledge    MT=0x41
     bool     do_bssmap_unblock                    = false; // BSSMAP Unblock                 MT=0x42
     bool     do_bssmap_unblock_ack                = false; // BSSMAP Unblocking Acknowledge  MT=0x43
+    bool     do_bssmap_cg_block            = false; // BSSMAP Circuit Group Block        MT=0x44
+    bool     do_bssmap_cg_block_ack        = false; // BSSMAP CG Blocking Acknowledge    MT=0x45
+    bool     do_bssmap_cg_unblock          = false; // BSSMAP Circuit Group Unblock      MT=0x46
+    bool     do_bssmap_cg_unblock_ack      = false; // BSSMAP CG Unblocking Acknowledge  MT=0x47
+    uint8_t  bssmap_cic_grp_bitmap_param   = 0xFF;  // --cic-grp-bitmap (8-bit circuit group mask)
     uint16_t bssmap_cic_param                      = 1;     // --cic (Circuit Identity Code)
     bool     do_bssmap_uplink_seized_command  = false; // BSSMAP Uplink Seized Command  MT=0x46
     uint8_t  bssmap_talker_priority_param     = 0;     // --talker-priority (0=normal)
@@ -11854,6 +12227,15 @@ int main(int argc, char** argv) {
     bool     do_dtap_tmsi_realloc_compl = false;  // TMSI Reallocation Complete  MM 0x1B
     bool     do_dtap_mm_info            = false;  // MM Information              MM 0x32
     bool     do_dtap_cipher_mode_compl  = false;  // Ciphering Mode Complete    RR 0x32
+    bool     do_dtap_mm_auth_req          = false; // MM Authentication Request MT=0x12
+    bool     do_dtap_mm_auth_resp         = false; // MM Authentication Response MT=0x14
+    bool     do_dtap_mm_id_req            = false; // MM Identity Request        MT=0x18
+    bool     do_dtap_mm_id_resp           = false; // MM Identity Response       MT=0x19
+    bool     do_dtap_mm_lu_accept         = false; // MM Location Updating Accept MT=0x02
+    bool     do_dtap_mm_lu_reject         = false; // MM Location Updating Reject MT=0x04
+    uint8_t  mm_cksn_param                = 0;     // --mm-cksn (0-7)
+    uint8_t  mm_id_type_param             = 1;     // --mm-id-type (1=IMSI 2=IMEI)
+    uint8_t  mm_lu_rej_cause_param        = 0x0B;  // --mm-lu-rej-cause (0x0B=PLMN not allowed)
     // P28: DTAP RR Status / Channel Release / Classmark Change / Classmark Enquiry
     bool     do_dtap_rr_status           = false; // RR Status             MT=0x12
     bool     do_dtap_rr_channel_release  = false; // RR Channel Release    MT=0x0D
@@ -11917,6 +12299,13 @@ int main(int argc, char** argv) {
     bool     do_dtap_rr_notification_response     = false; // RR Notification Response   MT=0x26
     bool     do_dtap_rr_cfg_change_cmd            = false; // RR Cfg Change Command      MT=0x30
     bool     do_dtap_rr_cell_change_order         = false; // RR Cell Change Order       MT=0x08
+    bool     do_dtap_rr_cfg_change_ack         = false; // RR Cfg Change Ack           MT=0x31
+    bool     do_dtap_rr_cfg_change_reject      = false; // RR Cfg Change Reject        MT=0x33
+    bool     do_dtap_rr_uplink_free            = false; // RR Uplink Free              MT=0x0C
+    bool     do_dtap_rr_notification_facch     = false; // RR Notification/FACCH       MT=0x25
+    bool     do_dtap_rr_imm_assignment_ext     = false; // RR Imm Assignment Extended  MT=0x39
+    bool     do_dtap_rr_init_req               = false; // RR Initial Request          MT=0x3C
+    uint8_t  rr_cfg_rej_cause_param            = 0x41;  // --rr-cfg-rej-cause
     uint8_t  rr_apdu_id_param                         = 0x01;  // --apdu-id (4-bit APDU ID)
     uint8_t  rr_apdu_flags_param                      = 0x00;  // --apdu-flags (4-bit)
     bool     do_dtap_rr_partial_release_complete      = false; // RR Partial Release Complete MT=0x0F
@@ -13008,6 +13397,11 @@ int main(int argc, char** argv) {
         else if (arg == "--send-bssmap-block-ack")         { do_bssmap_block_ack                   = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-bssmap-unblock")           { do_bssmap_unblock                     = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-bssmap-unblock-ack")       { do_bssmap_unblock_ack                 = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-bssmap-cg-block")          { do_bssmap_cg_block            = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-bssmap-cg-block-ack")      { do_bssmap_cg_block_ack        = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-bssmap-cg-unblock")        { do_bssmap_cg_unblock          = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-bssmap-cg-unblock-ack")    { do_bssmap_cg_unblock_ack      = true; do_lu = false; do_paging = false; }
+        else if (arg == "--cic-grp-bitmap") { if (i+1 < argc) bssmap_cic_grp_bitmap_param = (uint8_t)std::stoi(argv[++i], nullptr, 0); }
         else if (arg == "--cic") { if (i+1<argc) bssmap_cic_param = (uint16_t)std::stoul(argv[++i], nullptr, 0); }
         else if (arg == "--send-bssmap-vgcs-setup-refuse")      { do_bssmap_vgcs_vbs_setup_refuse = true; do_lu = false; do_paging = false; }
         else if (arg == "--talker-priority" && i+1 < argc) bssmap_talker_priority_param = (uint8_t)std::stoul(argv[++i]);
@@ -13143,6 +13537,15 @@ int main(int argc, char** argv) {
             do_dtap_cipher_mode_compl = true;
             do_lu = false;  do_paging = false;
         }
+        else if (arg == "--send-dtap-mm-auth-req")       { do_dtap_mm_auth_req          = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-dtap-mm-auth-resp")      { do_dtap_mm_auth_resp         = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-dtap-mm-id-req")         { do_dtap_mm_id_req            = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-dtap-mm-id-resp")        { do_dtap_mm_id_resp           = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-dtap-mm-lu-accept")      { do_dtap_mm_lu_accept         = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-dtap-mm-lu-reject")      { do_dtap_mm_lu_reject         = true; do_lu = false; do_paging = false; }
+        else if (arg == "--mm-cksn")       { if (i+1 < argc) mm_cksn_param = (uint8_t)std::stoi(argv[++i]); }
+        else if (arg == "--mm-id-type")    { if (i+1 < argc) mm_id_type_param = (uint8_t)std::stoi(argv[++i]); }
+        else if (arg == "--mm-lu-rej-cause"){ if (i+1 < argc) mm_lu_rej_cause_param = (uint8_t)std::stoi(argv[++i], nullptr, 0); }
         // P28: RR Status / Channel Release / Classmark Change / Classmark Enquiry
         else if (arg == "--send-dtap-rr-status")            { do_dtap_rr_status            = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-dtap-rr-channel-release")   { do_dtap_rr_channel_release   = true; do_lu = false; do_paging = false; }
@@ -13207,6 +13610,13 @@ int main(int argc, char** argv) {
         else if (arg == "--send-dtap-rr-notif-resp")       { do_dtap_rr_notification_response     = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-dtap-rr-cfg-chg-cmd")      { do_dtap_rr_cfg_change_cmd            = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-dtap-rr-cell-chg-order")   { do_dtap_rr_cell_change_order         = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-dtap-rr-cfg-chg-ack")      { do_dtap_rr_cfg_change_ack        = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-dtap-rr-cfg-chg-rej")      { do_dtap_rr_cfg_change_reject     = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-dtap-rr-uplink-free")       { do_dtap_rr_uplink_free           = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-dtap-rr-notif-facch")       { do_dtap_rr_notification_facch    = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-dtap-rr-imm-ass-ext")       { do_dtap_rr_imm_assignment_ext    = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-dtap-rr-init-req")          { do_dtap_rr_init_req              = true; do_lu = false; do_paging = false; }
+        else if (arg == "--rr-cfg-rej-cause") { if (i+1 < argc) rr_cfg_rej_cause_param = (uint8_t)std::stoi(argv[++i], nullptr, 0); }
         else if (arg == "--apdu-id")    { if (i+1<argc) rr_apdu_id_param    = (uint8_t)std::stoul(argv[++i], nullptr, 0); }
         else if (arg == "--apdu-flags") { if (i+1<argc) rr_apdu_flags_param = (uint8_t)std::stoul(argv[++i], nullptr, 0); }
         else if (arg == "--send-dtap-rr-vgcs-ul-rel")  { do_dtap_rr_vgcs_uplink_release = true; do_lu = false; do_paging = false; }
@@ -18584,6 +18994,70 @@ int main(int argc, char** argv) {
             msgb_free(bssmap_msg);
         }
     }
+    if (do_bssmap_cg_block) {
+        print_section_header("[BSSMAP Circuit Group Block]", "A-interface  BSS→MSC  MT=0x44");
+        std::cout << "\n";
+        struct msgb *bssmap_msg = generate_bssmap_circuit_group_block(bssmap_cic_param, bssmap_cic_grp_bitmap_param);
+        if (bssmap_msg) {
+            if (send_udp) {
+                struct msgb *sccp_msg = wrap_in_sccp_cr(bssmap_msg, a_ssn);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, m3ua_opc, m3ua_dpc, m3ua_ni, a_si, mp, sls);
+                    if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, remote_ip.c_str(), remote_port); msgb_free(m3ua_msg); }
+                    msgb_free(sccp_msg);
+                }
+            }
+            msgb_free(bssmap_msg);
+        }
+    }
+    if (do_bssmap_cg_block_ack) {
+        print_section_header("[BSSMAP Circuit Group Blocking Ack]", "A-interface  MSC→BSS  MT=0x45");
+        std::cout << "\n";
+        struct msgb *bssmap_msg = generate_bssmap_circuit_group_block_ack(bssmap_cic_param, bssmap_cic_grp_bitmap_param);
+        if (bssmap_msg) {
+            if (send_udp) {
+                struct msgb *sccp_msg = wrap_in_sccp_cr(bssmap_msg, a_ssn);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, m3ua_opc, m3ua_dpc, m3ua_ni, a_si, mp, sls);
+                    if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, remote_ip.c_str(), remote_port); msgb_free(m3ua_msg); }
+                    msgb_free(sccp_msg);
+                }
+            }
+            msgb_free(bssmap_msg);
+        }
+    }
+    if (do_bssmap_cg_unblock) {
+        print_section_header("[BSSMAP Circuit Group Unblock]", "A-interface  BSS→MSC  MT=0x46");
+        std::cout << "\n";
+        struct msgb *bssmap_msg = generate_bssmap_circuit_group_unblock(bssmap_cic_param, bssmap_cic_grp_bitmap_param);
+        if (bssmap_msg) {
+            if (send_udp) {
+                struct msgb *sccp_msg = wrap_in_sccp_cr(bssmap_msg, a_ssn);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, m3ua_opc, m3ua_dpc, m3ua_ni, a_si, mp, sls);
+                    if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, remote_ip.c_str(), remote_port); msgb_free(m3ua_msg); }
+                    msgb_free(sccp_msg);
+                }
+            }
+            msgb_free(bssmap_msg);
+        }
+    }
+    if (do_bssmap_cg_unblock_ack) {
+        print_section_header("[BSSMAP Circuit Group Unblocking Ack]", "A-interface  MSC→BSS  MT=0x47");
+        std::cout << "\n";
+        struct msgb *bssmap_msg = generate_bssmap_circuit_group_unblock_ack(bssmap_cic_param, bssmap_cic_grp_bitmap_param);
+        if (bssmap_msg) {
+            if (send_udp) {
+                struct msgb *sccp_msg = wrap_in_sccp_cr(bssmap_msg, a_ssn);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, m3ua_opc, m3ua_dpc, m3ua_ni, a_si, mp, sls);
+                    if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, remote_ip.c_str(), remote_port); msgb_free(m3ua_msg); }
+                    msgb_free(sccp_msg);
+                }
+            }
+            msgb_free(bssmap_msg);
+        }
+    }
 
 
     // ── A-interface: DTAP Location Updating Accept ───────────────────────────
@@ -19232,6 +19706,25 @@ int main(int argc, char** argv) {
         send_dtap_a(generate_dtap_cipher_mode_compl(),
                     "[DTAP Ciphering Mode Complete]", "A-interface  (MS → MSC)");
 
+    if (do_dtap_mm_auth_req)
+        send_dtap_a(generate_dtap_mm_auth_req(mm_cksn_param),
+                    "[DTAP MM Authentication Request]", "A-interface  (MSC → MS)");
+    if (do_dtap_mm_auth_resp)
+        send_dtap_a(generate_dtap_mm_auth_resp(),
+                    "[DTAP MM Authentication Response]", "A-interface  (MS → MSC)");
+    if (do_dtap_mm_id_req)
+        send_dtap_a(generate_dtap_mm_id_req(mm_id_type_param),
+                    "[DTAP MM Identity Request]", "A-interface  (MSC → MS)");
+    if (do_dtap_mm_id_resp)
+        send_dtap_a(generate_dtap_mm_id_resp(imsi.c_str()),
+                    "[DTAP MM Identity Response]", "A-interface  (MS → MSC)");
+    if (do_dtap_mm_lu_accept)
+        send_dtap_a(generate_dtap_mm_lu_accept(mcc, mnc, lac, tmsi_param),
+                    "[DTAP MM Location Updating Accept]", "A-interface  (MSC → MS)");
+    if (do_dtap_mm_lu_reject)
+        send_dtap_a(generate_dtap_mm_lu_reject(mm_lu_rej_cause_param),
+                    "[DTAP MM Location Updating Reject]", "A-interface  (MSC → MS)");
+
     // P28: DTAP RR Status / Channel Release / Classmark Change / Classmark Enquiry
     if (do_dtap_rr_status)
         send_dtap_a(generate_dtap_rr_status(rr_cause_param),
@@ -19400,6 +19893,24 @@ int main(int argc, char** argv) {
     if (do_dtap_rr_cell_change_order)
         send_dtap_a(generate_dtap_rr_cell_change_order(rr_arfcn_param, rr_bsic_param),
                     "[DTAP RR Cell Change Order]", "A-interface  MT=0x08");
+    if (do_dtap_rr_cfg_change_ack)
+        send_dtap_a(generate_dtap_rr_cfg_change_ack(),
+                    "[DTAP RR Configuration Change Acknowledge]", "A-interface  MT=0x31");
+    if (do_dtap_rr_cfg_change_reject)
+        send_dtap_a(generate_dtap_rr_cfg_change_reject(rr_cfg_rej_cause_param),
+                    "[DTAP RR Configuration Change Reject]", "A-interface  MT=0x33");
+    if (do_dtap_rr_uplink_free)
+        send_dtap_a(generate_dtap_rr_uplink_free(),
+                    "[DTAP RR Uplink Free]", "A-interface  MT=0x0C  (VGCS/VBS)");
+    if (do_dtap_rr_notification_facch)
+        send_dtap_a(generate_dtap_rr_notification_facch(),
+                    "[DTAP RR Notification/FACCH]", "A-interface  MT=0x25");
+    if (do_dtap_rr_imm_assignment_ext)
+        send_dtap_a(generate_dtap_rr_immediate_assignment_ext(rr_arfcn_param, rr_ts_param),
+                    "[DTAP RR Immediate Assignment Extended]", "A-interface  MT=0x39");
+    if (do_dtap_rr_init_req)
+        send_dtap_a(generate_dtap_rr_init_req(),
+                    "[DTAP RR Initial Request]", "A-interface  MT=0x3C");
     if (do_dtap_rr_partial_release_complete)
         send_dtap_a(generate_dtap_rr_partial_release_complete(),
                     "[DTAP RR Partial Release Complete]", "A-interface  MT=0x0F");
