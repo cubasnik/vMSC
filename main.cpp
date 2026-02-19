@@ -3092,6 +3092,161 @@ static struct msgb *generate_isup_grs(uint16_t cic, uint8_t range_value) {
 }
 
 // ──────────────────────────────────────────────────────────────
+// P17: M3UA ASP Management (RFC 4666 §3.5 / §3.6)
+//
+// M3UA Common Header (8 bytes):
+//   Version(1) Reserved(1) Class(1) Type(1) Length(4 BE, includes header)
+//
+// ASPSM (Class=0x03):
+//   ASPUP     Type=0x01  — ASP Up             (SGP→ASP или ASP→SGP)
+//   ASPUP-ACK Type=0x04  — ASP Up Ack
+//   ASPDN     Type=0x02  — ASP Down
+// ASPTM (Class=0x04):
+//   ASPAC     Type=0x01  — ASP Active         (+ Traffic Mode Type param)
+//   ASPAC-ACK Type=0x03  — ASP Active Ack
+//   ASPIA     Type=0x02  — ASP Inactive
+//
+// Traffic Mode Type (Tag=0x000B, Len=0x0008): 1=Override 2=Loadshare 3=Broadcast
+// Routing Context  (Tag=0x0006, Len=0x0008): 4-byte RC value (skip if rc==0)
+// ──────────────────────────────────────────────────────────────
+
+// helper: append a 4-byte uint32 TLV param to an msgb
+static void m3ua_put_param(struct msgb *msg, uint16_t tag, uint32_t val) {
+    *(msgb_put(msg, 1)) = (tag >> 8) & 0xFF;
+    *(msgb_put(msg, 1)) =  tag       & 0xFF;
+    *(msgb_put(msg, 1)) = 0x00;  // Length high = 0
+    *(msgb_put(msg, 1)) = 0x08;  // Length = 8 (T+L+V)
+    *(msgb_put(msg, 1)) = (val >> 24) & 0xFF;
+    *(msgb_put(msg, 1)) = (val >> 16) & 0xFF;
+    *(msgb_put(msg, 1)) = (val >>  8) & 0xFF;
+    *(msgb_put(msg, 1)) =  val        & 0xFF;
+}
+
+// helper: build M3UA common header, return pointer to length field for fixup
+static uint8_t *m3ua_put_header(struct msgb *msg, uint8_t msg_class, uint8_t msg_type) {
+    *(msgb_put(msg, 1)) = 0x01;         // Version
+    *(msgb_put(msg, 1)) = 0x00;         // Reserved
+    *(msgb_put(msg, 1)) = msg_class;
+    *(msgb_put(msg, 1)) = msg_type;
+    uint8_t *len_ptr = msgb_put(msg, 4); // Length — fill after
+    return len_ptr;
+}
+
+static void m3ua_fix_len(struct msgb *msg, uint8_t *len_ptr) {
+    uint32_t l = msg->len;
+    len_ptr[0] = (l >> 24) & 0xFF;
+    len_ptr[1] = (l >> 16) & 0xFF;
+    len_ptr[2] = (l >>  8) & 0xFF;
+    len_ptr[3] =  l        & 0xFF;
+}
+
+// ── ASPUP ─────────────────────────────────────────────────────
+static struct msgb *generate_m3ua_aspup() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "M3UA ASPUP");
+    if (!msg) return nullptr;
+    uint8_t *lp = m3ua_put_header(msg, 0x03, 0x01);
+    m3ua_fix_len(msg, lp);   // 8 bytes — no params
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e M3UA ASPUP (ASP Up)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Class: " << COLOR_GREEN << "0x03 (ASPSM)" << COLOR_RESET
+              << COLOR_BLUE << "  Type: "  << COLOR_GREEN << "0x01" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ASPUP:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ── ASPUP-ACK ─────────────────────────────────────────────────
+static struct msgb *generate_m3ua_aspup_ack() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "M3UA ASPUP-ACK");
+    if (!msg) return nullptr;
+    uint8_t *lp = m3ua_put_header(msg, 0x03, 0x04);
+    m3ua_fix_len(msg, lp);
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e M3UA ASPUP-ACK" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Class: " << COLOR_GREEN << "0x03 (ASPSM)" << COLOR_RESET
+              << COLOR_BLUE << "  Type: "  << COLOR_GREEN << "0x04" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ASPUP-ACK:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ── ASPDN ─────────────────────────────────────────────────────
+static struct msgb *generate_m3ua_aspdn() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "M3UA ASPDN");
+    if (!msg) return nullptr;
+    uint8_t *lp = m3ua_put_header(msg, 0x03, 0x02);
+    m3ua_fix_len(msg, lp);
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e M3UA ASPDN (ASP Down)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Class: " << COLOR_GREEN << "0x03 (ASPSM)" << COLOR_RESET
+              << COLOR_BLUE << "  Type: "  << COLOR_GREEN << "0x02" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ASPDN:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ── ASPAC ─────────────────────────────────────────────────────
+static struct msgb *generate_m3ua_aspac(uint8_t tmt, uint32_t rc) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "M3UA ASPAC");
+    if (!msg) return nullptr;
+    uint8_t *lp = m3ua_put_header(msg, 0x04, 0x01);
+    m3ua_put_param(msg, 0x000B, (uint32_t)tmt);  // Traffic Mode Type
+    if (rc != 0) m3ua_put_param(msg, 0x0006, rc); // Routing Context (optional)
+    m3ua_fix_len(msg, lp);
+    const char *tmt_str = (tmt==1)?"Override":(tmt==2)?"Loadshare":(tmt==3)?"Broadcast":"?";
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e M3UA ASPAC (ASP Active)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Class:  " << COLOR_GREEN << "0x04 (ASPTM)" << COLOR_RESET
+              << COLOR_BLUE << "  Type:   " << COLOR_GREEN << "0x01" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  TMT:    " << COLOR_GREEN << (int)tmt << " (" << tmt_str << ")" << COLOR_RESET << "\n";
+    if (rc) std::cout << COLOR_BLUE << "  RC:     " << COLOR_GREEN << rc << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440:  " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ASPAC:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ── ASPAC-ACK ─────────────────────────────────────────────────
+static struct msgb *generate_m3ua_aspac_ack(uint8_t tmt, uint32_t rc) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "M3UA ASPAC-ACK");
+    if (!msg) return nullptr;
+    uint8_t *lp = m3ua_put_header(msg, 0x04, 0x03);
+    m3ua_put_param(msg, 0x000B, (uint32_t)tmt);
+    if (rc != 0) m3ua_put_param(msg, 0x0006, rc);
+    m3ua_fix_len(msg, lp);
+    const char *tmt_str = (tmt==1)?"Override":(tmt==2)?"Loadshare":(tmt==3)?"Broadcast":"?";
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e M3UA ASPAC-ACK" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Class:  " << COLOR_GREEN << "0x04 (ASPTM)" << COLOR_RESET
+              << COLOR_BLUE << "  Type:   " << COLOR_GREEN << "0x03" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  TMT:    " << COLOR_GREEN << (int)tmt << " (" << tmt_str << ")" << COLOR_RESET << "\n";
+    if (rc) std::cout << COLOR_BLUE << "  RC:     " << COLOR_GREEN << rc << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440:  " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ASPAC-ACK:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ── ASPIA ─────────────────────────────────────────────────────
+static struct msgb *generate_m3ua_aspia() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "M3UA ASPIA");
+    if (!msg) return nullptr;
+    uint8_t *lp = m3ua_put_header(msg, 0x04, 0x02);
+    m3ua_fix_len(msg, lp);
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e M3UA ASPIA (ASP Inactive)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Class: " << COLOR_GREEN << "0x04 (ASPTM)" << COLOR_RESET
+              << COLOR_BLUE << "  Type: "  << COLOR_GREEN << "0x02" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ASPIA:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────
 // Вспомогательная функция: кодирование текста в GSM-7 (3GPP TS 23.038 §6.2.1)
 // in: ASCII-строка до 160 символов
 // out: буфер GSM7-packed данных, возвращает длину в байтах
@@ -5077,6 +5232,15 @@ int main(int argc, char** argv) {
     bool     do_isup_rsc  = false;     // ISUP RSC Reset Circuit      MT=0x12  (ISUP-interface)
     bool     do_isup_grs  = false;     // ISUP GRS Group Reset        MT=0x17  (ISUP-interface)
     uint8_t  grs_range_param = 7;      // --grs-range: 0–127 (0=1цепь, 7=8цепей)
+    // P17: M3UA ASP Management (RFC 4666 §3.5/§3.6)
+    bool     do_m3ua_aspup     = false; // ASPUP     ASPSM Class=3 Type=1
+    bool     do_m3ua_aspup_ack = false; // ASPUP-ACK ASPSM Class=3 Type=4
+    bool     do_m3ua_aspdn     = false; // ASPDN     ASPSM Class=3 Type=2
+    bool     do_m3ua_aspac     = false; // ASPAC     ASPTM Class=4 Type=1
+    bool     do_m3ua_aspac_ack = false; // ASPAC-ACK ASPTM Class=4 Type=3
+    bool     do_m3ua_aspia     = false; // ASPIA     ASPTM Class=4 Type=2
+    uint8_t  m3ua_tmt_param    = 2;     // --m3ua-tmt: 1=Override 2=Loadshare 3=Broadcast
+    uint32_t m3ua_rc_param     = 0;     // --m3ua-rc:  Routing Context (0=не добавлять)
     // SMS / USSD (P4)
     bool     do_map_mo_fsm = false;    // MAP MO-ForwardSM (opCode=46)            (C-interface)
     bool     do_map_mt_fsm = false;    // MAP MT-ForwardSM (opCode=44)            (C-interface)
@@ -5762,6 +5926,37 @@ int main(int argc, char** argv) {
         }
         else if (arg == "--grs-range" && i + 1 < argc) {
             grs_range_param = (uint8_t)std::stoul(argv[++i], nullptr, 0);
+        }
+        // ── P17: M3UA ASP Management ──────────────────────────────────────────
+        else if (arg == "--send-m3ua-aspup") {
+            do_m3ua_aspup = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-m3ua-aspup-ack") {
+            do_m3ua_aspup_ack = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-m3ua-aspdn") {
+            do_m3ua_aspdn = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-m3ua-aspac") {
+            do_m3ua_aspac = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-m3ua-aspac-ack") {
+            do_m3ua_aspac_ack = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-m3ua-aspia") {
+            do_m3ua_aspia = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--m3ua-tmt" && i + 1 < argc) {
+            m3ua_tmt_param = (uint8_t)std::stoul(argv[++i], nullptr, 0);
+        }
+        else if (arg == "--m3ua-rc" && i + 1 < argc) {
+            m3ua_rc_param = (uint32_t)std::stoul(argv[++i], nullptr, 0);
         }
         // P6: A-interface DTAP/BSSMAP
         else if (arg == "--send-dtap-auth-req") {
@@ -7616,6 +7811,90 @@ int main(int argc, char** argv) {
                 std::cerr << COLOR_YELLOW << "⚠ ISUP-interface: remote_ip не задан\n" << COLOR_RESET;
             }
             msgb_free(isup_msg);
+        }
+    }
+
+    // ── M3UA ASPUP ────────────────────────────────────────────────────────────
+    if (do_m3ua_aspup) {
+        print_section_header("[M3UA ASPUP]", "M3UA ASPSM  (ASP Up, Class=3 Type=1)");
+        std::cout << "\n";
+        struct msgb *asp_msg = generate_m3ua_aspup();
+        if (asp_msg) {
+            if (send_udp && !remote_ip.empty())
+                send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
+            else if (send_udp)
+                std::cerr << COLOR_YELLOW << "\u26a0 M3UA: remote_ip \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\n" << COLOR_RESET;
+            msgb_free(asp_msg);
+        }
+    }
+
+    // ── M3UA ASPUP-ACK ────────────────────────────────────────────────────────
+    if (do_m3ua_aspup_ack) {
+        print_section_header("[M3UA ASPUP-ACK]", "M3UA ASPSM  (ASP Up Ack, Class=3 Type=4)");
+        std::cout << "\n";
+        struct msgb *asp_msg = generate_m3ua_aspup_ack();
+        if (asp_msg) {
+            if (send_udp && !remote_ip.empty())
+                send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
+            else if (send_udp)
+                std::cerr << COLOR_YELLOW << "\u26a0 M3UA: remote_ip \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\n" << COLOR_RESET;
+            msgb_free(asp_msg);
+        }
+    }
+
+    // ── M3UA ASPDN ────────────────────────────────────────────────────────────
+    if (do_m3ua_aspdn) {
+        print_section_header("[M3UA ASPDN]", "M3UA ASPSM  (ASP Down, Class=3 Type=2)");
+        std::cout << "\n";
+        struct msgb *asp_msg = generate_m3ua_aspdn();
+        if (asp_msg) {
+            if (send_udp && !remote_ip.empty())
+                send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
+            else if (send_udp)
+                std::cerr << COLOR_YELLOW << "\u26a0 M3UA: remote_ip \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\n" << COLOR_RESET;
+            msgb_free(asp_msg);
+        }
+    }
+
+    // ── M3UA ASPAC ────────────────────────────────────────────────────────────
+    if (do_m3ua_aspac) {
+        print_section_header("[M3UA ASPAC]", "M3UA ASPTM  (ASP Active, Class=4 Type=1)");
+        std::cout << "\n";
+        struct msgb *asp_msg = generate_m3ua_aspac(m3ua_tmt_param, m3ua_rc_param);
+        if (asp_msg) {
+            if (send_udp && !remote_ip.empty())
+                send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
+            else if (send_udp)
+                std::cerr << COLOR_YELLOW << "\u26a0 M3UA: remote_ip \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\n" << COLOR_RESET;
+            msgb_free(asp_msg);
+        }
+    }
+
+    // ── M3UA ASPAC-ACK ────────────────────────────────────────────────────────
+    if (do_m3ua_aspac_ack) {
+        print_section_header("[M3UA ASPAC-ACK]", "M3UA ASPTM  (ASP Active Ack, Class=4 Type=3)");
+        std::cout << "\n";
+        struct msgb *asp_msg = generate_m3ua_aspac_ack(m3ua_tmt_param, m3ua_rc_param);
+        if (asp_msg) {
+            if (send_udp && !remote_ip.empty())
+                send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
+            else if (send_udp)
+                std::cerr << COLOR_YELLOW << "\u26a0 M3UA: remote_ip \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\n" << COLOR_RESET;
+            msgb_free(asp_msg);
+        }
+    }
+
+    // ── M3UA ASPIA ────────────────────────────────────────────────────────────
+    if (do_m3ua_aspia) {
+        print_section_header("[M3UA ASPIA]", "M3UA ASPTM  (ASP Inactive, Class=4 Type=2)");
+        std::cout << "\n";
+        struct msgb *asp_msg = generate_m3ua_aspia();
+        if (asp_msg) {
+            if (send_udp && !remote_ip.empty())
+                send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
+            else if (send_udp)
+                std::cerr << COLOR_YELLOW << "\u26a0 M3UA: remote_ip \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\n" << COLOR_RESET;
+            msgb_free(asp_msg);
         }
     }
 

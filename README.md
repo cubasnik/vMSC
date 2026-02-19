@@ -72,6 +72,14 @@ GSM/SIGTRAN protocol message generator and simulator.
 | `--send-isup-rsc` | ISUP RSC Reset Circuit (MT=0x12, ISUP-interface, сброс цепи) |
 | `--send-isup-grs` | ISUP GRS Group Reset (MT=0x17, ISUP-interface, групповой сброс) |
 | `--grs-range <N>` | Range для GRS: 0–127; N = кол-во доп. цепей (0=1 цепь, 7=8 цепей, умолч. 7) |
+| `--send-m3ua-aspup` | M3UA ASPUP — ASP Up (ASPSM Class=3 Type=1, без SCCP/SS7) |
+| `--send-m3ua-aspup-ack` | M3UA ASPUP-ACK — ASP Up Acknowledgement (ASPSM Class=3 Type=4) |
+| `--send-m3ua-aspdn` | M3UA ASPDN — ASP Down (ASPSM Class=3 Type=2) |
+| `--send-m3ua-aspac` | M3UA ASPAC — ASP Active (ASPTM Class=4 Type=1, + Traffic Mode Type param) |
+| `--send-m3ua-aspac-ack` | M3UA ASPAC-ACK — ASP Active Acknowledgement (ASPTM Class=4 Type=3) |
+| `--send-m3ua-aspia` | M3UA ASPIA — ASP Inactive (ASPTM Class=4 Type=2) |
+| `--m3ua-tmt <N>` | Traffic Mode Type для ASPAC/ASPAC-ACK: `1`=Override `2`=Loadshare (умолч.) `3`=Broadcast |
+| `--m3ua-rc <N>` | Routing Context для ASPAC/ASPAC-ACK (0=не добавлять, умолч. 0) |
 | `--send-map-prep-subseq-ho` | MAP PrepareSubsequentHandover (opCode=69, E-interface, Anchor→Target MSC) |
 | `--send-map-process-access-sig` | MAP ProcessAccessSignalling (opCode=33, E-interface, Target→Anchor MSC) |
 | `--send-map-mo-fsm` | MAP MO-ForwardSM (opCode=46, C-interface, MSC → SMSC, TP-Submit TPDU) |
@@ -249,6 +257,17 @@ MSC (мы)                          HLR (партнёр)
 ./vmsc --send-isup-grs                            --send-udp --use-m3ua   # GRS CIC=1 range=7 (8 цепей, MT=0x17)
 ./vmsc --send-isup-grs  --cic 8 --grs-range 15    --send-udp --use-m3ua   # GRS CIC=8 range=15 (16 цепей)
 ./vmsc --send-isup-grs  --grs-range 0             --send-udp --use-m3ua   # GRS одна цепь
+
+# P17: M3UA ASP Management (RFC 4666 §3.5/§3.6)
+# ASP lifecycle: ASPUP → ASPUP-ACK → ASPAC → ASPAC-ACK … ASPIA → ASPDN
+./vmsc --send-m3ua-aspup                           --send-udp --use-m3ua   # ASPUP     (ASPSM Class=3 Type=1)
+./vmsc --send-m3ua-aspup-ack                       --send-udp --use-m3ua   # ASPUP-ACK (ASPSM Class=3 Type=4)
+./vmsc --send-m3ua-aspdn                           --send-udp --use-m3ua   # ASPDN     (ASPSM Class=3 Type=2)
+./vmsc --send-m3ua-aspac                           --send-udp --use-m3ua   # ASPAC     (ASPTM Class=4 Type=1, TMT=Loadshare)
+./vmsc --send-m3ua-aspac  --m3ua-tmt 1             --send-udp --use-m3ua   # ASPAC     TMT=Override
+./vmsc --send-m3ua-aspac  --m3ua-tmt 1 --m3ua-rc 100 --send-udp --use-m3ua # ASPAC     TMT=Override + RC=100
+./vmsc --send-m3ua-aspac-ack                       --send-udp --use-m3ua   # ASPAC-ACK (ASPTM Class=4 Type=3)
+./vmsc --send-m3ua-aspia                           --send-udp --use-m3ua   # ASPIA     (ASPTM Class=4 Type=2)
 
 # C-interface: SMS (MAP over SCCP/M3UA)
 ./vmsc --send-map-mo-fsm                           --send-udp --use-m3ua  # MO-ForwardSM (текст по умолчанию)
