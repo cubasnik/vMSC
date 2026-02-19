@@ -3735,6 +3735,164 @@ static struct msgb *generate_map_return_error(uint32_t dtid, uint8_t invoke_id, 
 }
 
 // ============================================================
+// P15: MAP SMS Gateway messages (3GPP TS 29.002 §10.5.6)
+//   SRI-SM          opCode=45 (0x2D)  GMSC/MSC → HLR
+//   ReportSMDeliveryStatus opCode=47 (0x2F)  SMSC → HLR
+//   AC OID: shortMsgGatewayContext-v3 = {0.4.0.0.1.0.20.3}
+// ============================================================
+
+// ──────────────────────────────────────────────────────────────
+// MAP SendRoutingInfoForSM (SRI-SM) — 3GPP TS 29.002 §10.5.6.5
+// Направление: GMSC → HLR  (C-interface)
+// TCAP Begin, Invoke, opCode=45 (0x2D)
+// RoutingInfoForSM-Arg ::= SEQUENCE {
+//   msisdn              [0] IMPLICIT ISDN-AddressString,  — вызываемый абонент
+//   sm-RP-PRI           [1] IMPLICIT BOOLEAN,             — FALSE=не срочный
+//   serviceCentreAddress[2] IMPLICIT AddressString        — адрес SMSC
+// }
+// ──────────────────────────────────────────────────────────────
+static struct msgb *generate_map_sri_sm(const char *msisdn_str,
+                                        const char *smsc_str) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "MAP SRI-SM");
+    if (!msg) return nullptr;
+
+    // ── msisdn [0] IMPLICIT ISDNAddressString
+    uint8_t msisdn_bcd[12]; uint8_t msisdn_bcd_len = 0;
+    msisdn_bcd[msisdn_bcd_len++] = 0x91;  // TON=international, NPI=E.164
+    {
+        size_t dlen = strlen(msisdn_str);
+        for (size_t i = 0; i < dlen; i += 2) {
+            uint8_t lo = (uint8_t)(msisdn_str[i] - '0');
+            uint8_t hi = (i + 1 < dlen) ? (uint8_t)(msisdn_str[i + 1] - '0') : 0x0F;
+            msisdn_bcd[msisdn_bcd_len++] = (uint8_t)((hi << 4) | lo);
+        }
+    }
+    uint8_t msisdn_ie[16]; uint8_t msisdn_ie_len = (uint8_t)ber_tlv(msisdn_ie, 0x80, msisdn_bcd, msisdn_bcd_len);
+
+    // ── sm-RP-PRI [1] IMPLICIT BOOLEAN = FALSE (0x00)
+    uint8_t pri_val = 0x00;
+    uint8_t pri_ie[5]; uint8_t pri_ie_len = (uint8_t)ber_tlv(pri_ie, 0x81, &pri_val, 1);
+
+    // ── serviceCentreAddress [2] IMPLICIT AddressString (SMSC E.164)
+    uint8_t smsc_bcd[12]; uint8_t smsc_bcd_len = 0;
+    smsc_bcd[smsc_bcd_len++] = 0x91;  // TON=international, NPI=E.164
+    {
+        size_t dlen = strlen(smsc_str);
+        for (size_t i = 0; i < dlen; i += 2) {
+            uint8_t lo = (uint8_t)(smsc_str[i] - '0');
+            uint8_t hi = (i + 1 < dlen) ? (uint8_t)(smsc_str[i + 1] - '0') : 0x0F;
+            smsc_bcd[smsc_bcd_len++] = (uint8_t)((hi << 4) | lo);
+        }
+    }
+    uint8_t smsc_ie[16]; uint8_t smsc_ie_len = (uint8_t)ber_tlv(smsc_ie, 0x82, smsc_bcd, smsc_bcd_len);
+
+    // ── RoutingInfoForSM-Arg SEQUENCE
+    uint8_t seq_body[48]; uint8_t sq_len = 0;
+    memcpy(seq_body + sq_len, msisdn_ie, msisdn_ie_len); sq_len += msisdn_ie_len;
+    memcpy(seq_body + sq_len, pri_ie,    pri_ie_len);    sq_len += pri_ie_len;
+    memcpy(seq_body + sq_len, smsc_ie,   smsc_ie_len);   sq_len += smsc_ie_len;
+    uint8_t seq_tlv[56]; uint8_t seq_len = (uint8_t)ber_tlv(seq_tlv, 0x30, seq_body, sq_len);
+
+    // shortMsgGatewayContext-v3 OID: {0.4.0.0.1.0.20.3}
+    static const uint8_t sms_gw_ac_oid[] = { 0x04, 0x00, 0x00, 0x01, 0x00, 0x14, 0x03 };
+    static uint32_t sri_sm_tid = 0x00000F00;
+    uint8_t pdu[300];
+    uint8_t pdu_len = build_tcap_begin(pdu, sri_sm_tid++, sms_gw_ac_oid, sizeof(sms_gw_ac_oid),
+                                       0x01, 0x2D /* opCode=45 SRI-SM */, seq_tlv, seq_len);
+    memcpy(msgb_put(msg, pdu_len), pdu, pdu_len);
+
+    std::cout << COLOR_CYAN << "✓ Сгенерировано MAP SendRoutingInfoForSM (SRI-SM)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MSISDN:  " << COLOR_GREEN << msisdn_str << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  SMSC:    " << COLOR_GREEN << smsc_str   << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  OpCode:  " << COLOR_GREEN << "45 (0x2D) SendRoutingInfoForSM" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  TID:     " << COLOR_GREEN << "0x" << std::hex << (sri_sm_tid - 1) << std::dec << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  AC OID:  " << COLOR_GREEN << "shortMsgGatewayContext-v3 {0.4.0.0.1.0.20.3}" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер:  " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex MAP SRI-SM:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i + 1) % 16 == 0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────
+// MAP ReportSMDeliveryStatus — 3GPP TS 29.002 §10.5.6.7
+// Направление: SMSC → HLR  (C-interface, после получения MT-FSM ответа)
+// TCAP Begin, Invoke, opCode=47 (0x2F)
+// ReportSMDeliveryStatusArg ::= SEQUENCE {
+//   msisdn              [0] IMPLICIT ISDN-AddressString,
+//   serviceCentreAddress       AddressString  (tag=0x04),
+//   sm-DeliveryOutcome  [3] IMPLICIT SMDeliveryOutcome ENUMERATED {
+//     memCapacityExceeded(0), absentSubscriber(1), successfulTransfer(2) }
+// }
+// ──────────────────────────────────────────────────────────────
+static struct msgb *generate_map_report_sm_delivery_status(const char *msisdn_str,
+                                                            const char *smsc_str,
+                                                            uint8_t delivery_outcome) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "MAP ReportSMDS");
+    if (!msg) return nullptr;
+
+    // ── msisdn [0] IMPLICIT ISDNAddressString
+    uint8_t msisdn_bcd[12]; uint8_t msisdn_bcd_len = 0;
+    msisdn_bcd[msisdn_bcd_len++] = 0x91;
+    {
+        size_t dlen = strlen(msisdn_str);
+        for (size_t i = 0; i < dlen; i += 2) {
+            uint8_t lo = (uint8_t)(msisdn_str[i] - '0');
+            uint8_t hi = (i + 1 < dlen) ? (uint8_t)(msisdn_str[i + 1] - '0') : 0x0F;
+            msisdn_bcd[msisdn_bcd_len++] = (uint8_t)((hi << 4) | lo);
+        }
+    }
+    uint8_t msisdn_ie[16]; uint8_t msisdn_ie_len = (uint8_t)ber_tlv(msisdn_ie, 0x80, msisdn_bcd, msisdn_bcd_len);
+
+    // ── serviceCentreAddress AddressString (tag=0x04 — universal OCTET STRING)
+    uint8_t smsc_bcd[12]; uint8_t smsc_bcd_len = 0;
+    smsc_bcd[smsc_bcd_len++] = 0x91;
+    {
+        size_t dlen = strlen(smsc_str);
+        for (size_t i = 0; i < dlen; i += 2) {
+            uint8_t lo = (uint8_t)(smsc_str[i] - '0');
+            uint8_t hi = (i + 1 < dlen) ? (uint8_t)(smsc_str[i + 1] - '0') : 0x0F;
+            smsc_bcd[smsc_bcd_len++] = (uint8_t)((hi << 4) | lo);
+        }
+    }
+    uint8_t smsc_ie[16]; uint8_t smsc_ie_len = (uint8_t)ber_tlv(smsc_ie, 0x04, smsc_bcd, smsc_bcd_len);
+
+    // ── sm-DeliveryOutcome [3] IMPLICIT ENUMERATED
+    uint8_t out_ie[5]; uint8_t out_ie_len = (uint8_t)ber_tlv(out_ie, 0x83, &delivery_outcome, 1);
+
+    // ── ReportSMDeliveryStatusArg SEQUENCE
+    uint8_t seq_body[48]; uint8_t sq_len = 0;
+    memcpy(seq_body + sq_len, msisdn_ie, msisdn_ie_len); sq_len += msisdn_ie_len;
+    memcpy(seq_body + sq_len, smsc_ie,   smsc_ie_len);   sq_len += smsc_ie_len;
+    memcpy(seq_body + sq_len, out_ie,    out_ie_len);    sq_len += out_ie_len;
+    uint8_t seq_tlv[56]; uint8_t seq_len = (uint8_t)ber_tlv(seq_tlv, 0x30, seq_body, sq_len);
+
+    static const uint8_t sms_gw_ac_oid[] = { 0x04, 0x00, 0x00, 0x01, 0x00, 0x14, 0x03 };
+    static uint32_t rsds_tid = 0x00001000;
+    uint8_t pdu[300];
+    uint8_t pdu_len = build_tcap_begin(pdu, rsds_tid++, sms_gw_ac_oid, sizeof(sms_gw_ac_oid),
+                                       0x01, 0x2F /* opCode=47 ReportSMDS */, seq_tlv, seq_len);
+    memcpy(msgb_put(msg, pdu_len), pdu, pdu_len);
+
+    const char *outcome_str = (delivery_outcome == 0) ? "memCapacityExceeded"
+                            : (delivery_outcome == 1) ? "absentSubscriber"
+                            :                           "successfulTransfer";
+    std::cout << COLOR_CYAN << "✓ Сгенерировано MAP ReportSMDeliveryStatus" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MSISDN:   " << COLOR_GREEN << msisdn_str   << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  SMSC:     " << COLOR_GREEN << smsc_str     << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Outcome:  " << COLOR_GREEN << (int)delivery_outcome
+              << " – " << outcome_str << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  OpCode:   " << COLOR_GREEN << "47 (0x2F) ReportSMDeliveryStatus" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  TID:      " << COLOR_GREEN << "0x" << std::hex << (rsds_tid - 1) << std::dec << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  AC OID:   " << COLOR_GREEN << "shortMsgGatewayContext-v3 {0.4.0.0.1.0.20.3}" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер:   " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex MAP ReportSMDeliveryStatus:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i + 1) % 16 == 0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ============================================================
 
 static struct msgb *generate_location_update_request(const char *imsi_str, uint16_t mcc, uint16_t mnc, uint16_t lac) {
     struct msgb *msg = msgb_alloc_headroom(512, 128, "LU Request");
@@ -4811,6 +4969,11 @@ int main(int argc, char** argv) {
     bool     do_map_ussd   = false;    // MAP processUnstructuredSS-Request (59)  (C-interface)
     std::string sm_text_param  = "Hello from vMSC";  // --sm-text
     std::string ussd_str_param = "*100#";             // --ussd-str
+    // P15: MAP SMS Gateway (3GPP TS 29.002 §10.5.6)
+    bool     do_map_sri_sm      = false;  // MAP SendRoutingInfoForSM     opCode=45 (GMSC→HLR)
+    bool     do_map_report_smds = false;  // MAP ReportSMDeliveryStatus   opCode=47 (SMSC→HLR)
+    std::string smsc_param      = "79161000099";  // --smsc: E.164 адрес SMSC
+    uint8_t  smds_outcome_param = 2;              // --smds-outcome: 0=memCap 1=absent 2=success
     // P6: A-interface DTAP/BSSMAP — аутентификация, шифрование, LU accept/reject
     bool     do_dtap_auth_req   = false;  // DTAP Authentication Request  MM 0x12
     bool     do_dtap_auth_resp  = false;  // DTAP Authentication Response MM 0x14
@@ -5420,6 +5583,17 @@ int main(int argc, char** argv) {
         else if (arg == "--ussd-str" && i + 1 < argc) {
             ussd_str_param = argv[++i];
         }
+        // ── P15: MAP SMS Gateway ──────────────────────────────────────────
+        else if (arg == "--send-map-sri-sm") {
+            do_map_sri_sm = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-map-report-smds") {
+            do_map_report_smds = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--smsc"         && i + 1 < argc) smsc_param         = argv[++i];
+        else if (arg == "--smds-outcome" && i + 1 < argc) smds_outcome_param = (uint8_t)std::stoul(argv[++i]);
         else if (arg == "--send-isup-acm") {
             do_isup_acm = true;
             do_lu       = false;
@@ -6926,6 +7100,57 @@ int main(int argc, char** argv) {
         print_section_header("[MAP USSD]", "C-interface  (MSC → HLR, opCode=59)");
         std::cout << "\n";
         struct msgb *map_msg = generate_map_ussd(msisdn.c_str(), ussd_str_param.c_str());
+        if (map_msg) {
+            if (send_udp && !c_remote_ip.empty()) {
+                ScpAddr c_called  { c_ssn_remote, c_gt_ind, gt_tt, gt_np, gt_nai, c_gt_called };
+                ScpAddr c_calling { c_ssn_local,  c_gt_ind, gt_tt, gt_np, gt_nai, msc_gt };
+                struct msgb *sccp_msg = wrap_in_sccp_udt(map_msg, c_called, c_calling);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, c_opc, c_dpc, c_m3ua_ni, c_si, mp, sls);
+                    if (m3ua_msg) {
+                        send_message_udp(m3ua_msg->data, m3ua_msg->len, c_remote_ip.c_str(), c_remote_port);
+                        msgb_free(m3ua_msg);
+                    }
+                    msgb_free(sccp_msg);
+                }
+            } else if (send_udp) {
+                std::cerr << COLOR_YELLOW << "⚠ C-interface: remote_ip не задан\n" << COLOR_RESET;
+            }
+            msgb_free(map_msg);
+        }
+    }
+
+    // ── P15: MAP SRI-SM / ReportSMDeliveryStatus (SMS Gateway) ─────────────────
+
+    if (do_map_sri_sm) {
+        print_section_header("[MAP SRI-SM]", "C-interface  (GMSC/MSC → HLR, opCode=45)");
+        std::cout << "\n";
+        struct msgb *map_msg = generate_map_sri_sm(msisdn.c_str(), smsc_param.c_str());
+        if (map_msg) {
+            if (send_udp && !c_remote_ip.empty()) {
+                ScpAddr c_called  { c_ssn_remote, c_gt_ind, gt_tt, gt_np, gt_nai, c_gt_called };
+                ScpAddr c_calling { c_ssn_local,  c_gt_ind, gt_tt, gt_np, gt_nai, msc_gt };
+                struct msgb *sccp_msg = wrap_in_sccp_udt(map_msg, c_called, c_calling);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, c_opc, c_dpc, c_m3ua_ni, c_si, mp, sls);
+                    if (m3ua_msg) {
+                        send_message_udp(m3ua_msg->data, m3ua_msg->len, c_remote_ip.c_str(), c_remote_port);
+                        msgb_free(m3ua_msg);
+                    }
+                    msgb_free(sccp_msg);
+                }
+            } else if (send_udp) {
+                std::cerr << COLOR_YELLOW << "⚠ C-interface: remote_ip не задан\n" << COLOR_RESET;
+            }
+            msgb_free(map_msg);
+        }
+    }
+
+    if (do_map_report_smds) {
+        print_section_header("[MAP ReportSMDeliveryStatus]", "C-interface  (SMSC → HLR, opCode=47)");
+        std::cout << "\n";
+        struct msgb *map_msg = generate_map_report_sm_delivery_status(
+                                   msisdn.c_str(), smsc_param.c_str(), smds_outcome_param);
         if (map_msg) {
             if (send_udp && !c_remote_ip.empty()) {
                 ScpAddr c_called  { c_ssn_remote, c_gt_ind, gt_tt, gt_np, gt_nai, c_gt_called };

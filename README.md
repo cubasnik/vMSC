@@ -72,6 +72,10 @@ GSM/SIGTRAN protocol message generator and simulator.
 | `--send-map-mo-fsm` | MAP MO-ForwardSM (opCode=46, C-interface, MSC → SMSC, TP-Submit TPDU) |
 | `--send-map-mt-fsm` | MAP MT-ForwardSM (opCode=44, C-interface, SMSC → MSC, TP-Deliver TPDU) |
 | `--send-map-ussd` | MAP processUnstructuredSS-Request (opCode=59, C-interface, MSC → HLR) |
+| `--send-map-sri-sm` | MAP SendRoutingInfoForSM (opCode=45, C-interface, GMSC → HLR) |
+| `--send-map-report-smds` | MAP ReportSMDeliveryStatus (opCode=47, C-interface, SMSC → HLR) |
+| `--smsc <E.164>` | Адрес SMSC для SRI-SM / ReportSMDeliveryStatus (умолч. `79161000099`) |
+| `--smds-outcome <N>` | SM-DeliveryOutcome: `0`=memCapacityExceeded `1`=absentSubscriber `2`=successfulTransfer (умолч.) |
 | `--send-dtap-auth-req` | DTAP Authentication Request (MM 0x12, A-interface, MSC → MS) |
 | `--send-dtap-auth-resp` | DTAP Authentication Response (MM 0x14, A-interface, MS → MSC) |
 | `--send-dtap-id-req` | DTAP Identity Request (MM 0x18, A-interface, MSC → MS) |
@@ -239,6 +243,16 @@ MSC (мы)                          HLR (партнёр)
 # C-interface: USSD (MAP over SCCP/M3UA)
 ./vmsc --send-map-ussd                             --send-udp --use-m3ua  # USSD *100# (умолч.)
 ./vmsc --send-map-ussd  --ussd-str "*105*1#"       --send-udp --use-m3ua  # USSD произвольная строка
+
+# P15: C-interface MAP SMS Gateway (3GPP TS 29.002 §10.5.6)
+# SMS delivery flow: GMSC → HLR (SRI-SM) → MSC (MT-FSM) → HLR (ReportSMDeliveryStatus)
+./vmsc --send-map-sri-sm                                             --send-udp --use-m3ua  # SRI-SM        (opCode=45, GMSC→HLR)
+./vmsc --send-map-sri-sm   --msisdn 79990000099                      --send-udp --use-m3ua  # SRI-SM с MSISDN
+./vmsc --send-map-sri-sm   --smsc 79161000001                        --send-udp --use-m3ua  # SRI-SM с SMSC
+./vmsc --send-map-report-smds                                        --send-udp --use-m3ua  # ReportSMDS    (opCode=47, successfulTransfer)
+./vmsc --send-map-report-smds --smds-outcome 2                       --send-udp --use-m3ua  # outcome=2: successfulTransfer (умолч.)
+./vmsc --send-map-report-smds --smds-outcome 1 --smsc 79161000001    --send-udp --use-m3ua  # outcome=1: absentSubscriber
+./vmsc --send-map-report-smds --smds-outcome 0                       --send-udp --use-m3ua  # outcome=0: memCapacityExceeded
 
 # A-interface: DTAP/BSSMAP — полный LU flow (GSM 04.08 / 3GPP TS 24.008, 48.008)
 # Сброс интерфейса
