@@ -1,1 +1,1 @@
-/usr/bin/c++ -Wl,--no-as-needed -Wl,--dependency-file=CMakeFiles/vmsc.dir/link.d CMakeFiles/vmsc.dir/main.cpp.o -o vmsc  -losmogsm -losmoisdn -losmoabis -losmocore -ltalloc -lmnl
+/usr/bin/c++ -O3 -DNDEBUG -Wl,--no-as-needed -Wl,--dependency-file=CMakeFiles/vmsc.dir/link.d CMakeFiles/vmsc.dir/main.cpp.o -o vmsc  -losmogsm -losmoisdn -losmoabis -losmocore -ltalloc -lmnl

@@ -8739,6 +8739,24 @@ static struct msgb *generate_bssmap_ho_candidate_enquiry(uint16_t lac) {
     return msg;
 }
 
+// ── P41: BSSMAP Handover Complete (3GPP TS 48.008 §3.2.1.14) ──────────────────
+// BSC → MSC (Source)  —  Target BSC уведомляет MSC об успешном завершении HO
+// Minimal version: just the message type
+static struct msgb *generate_bssmap_ho_complete() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSMAP HO Complete");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = 0x00;  // BSSAP discriminator (BSSMAP)
+    uint8_t *len_ptr = msgb_put(msg, 1);
+    *(msgb_put(msg, 1)) = 0x14;  // Message Type: Handover Complete (MT=0x14)
+
+    // Optional IEs можно добавить если требуется (пока minimal)
+    *len_ptr = msg->len - 2;
+
+    std::cout << COLOR_CYAN << "✓ Сгенерировано BSSMAP Handover Complete" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
 // BSSMAP Handover Request (3GPP TS 48.008 §3.2.1.8)
 // MSC → BSC (Target)  —  MSC запрашивает ресурсы в целевом BSC
 // Содержит: Channel Type IE + Encryption Information IE + Classmark IE + Cell ID IE
@@ -10055,6 +10073,19 @@ static struct msgb *generate_dtap_rr_handover_command(uint16_t arfcn, uint8_t bs
 // DTAP RR Handover Complete (3GPP TS 44.018 §9.1.16)
 // MS → BSC  MT=0x2C  — успешное завершение хэндовера в новой ячейке
 // No mandatory IEs beyond the fixed header (optional RR cause)
+static struct msgb *generate_dtap_rr_channel_request(void) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP RR Channel Request");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = GSM48_PDISC_RR;
+    *(msgb_put(msg, 1)) = 0x23;      // RR Channel Request MT=0x23
+    std::cout << COLOR_CYAN << "✓ Сгенерировано DTAP RR Channel Request" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x23  (MS → BSC)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// DTAP RR Handover Complete (3GPP TS 44.018 §9.1.13)
+// MS → BSC  MT=0x2C  — успешное завершение хэндовера
 static struct msgb *generate_dtap_rr_handover_complete(void) {
     struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP RR HO Compl");
     if (!msg) return nullptr;
@@ -10881,6 +10912,19 @@ static struct msgb *generate_dtap_mm_cm_service_acc() {
     return msg;
 }
 
+// ── P41: DTAP MM NULL Message (3GPP TS 24.008 §9.2.4) ────────────────────────
+// MSC/MS    PD=MM(0x05), MT=0x30 — пустое сообщение (heartbeat)
+// No IE, just header
+static struct msgb *generate_dtap_mm_null() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP MM NULL");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = GSM48_PDISC_MM;  // PD = MM 0x05
+    *(msgb_put(msg, 1)) = 0x30;            // MT = MM NULL Message
+    std::cout << COLOR_CYAN << "✓ Сгенерировано DTAP MM NULL Message" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт (header only)" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
 // ── P21-R: DTAP MM CM Service Reject (3GPP TS 24.008 §9.2.10) ───────────────
 // MSC → MS   PD=MM(0x05), MT=0x22
 // Reject Cause IE: tag=0x08, len=1
@@ -11035,7 +11079,7 @@ static struct msgb *generate_dtap_cc_call_proceeding(uint8_t ti) {
 static struct msgb *generate_dtap_cc_alerting(uint8_t ti) {
     struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP CC Alerting");
     if (!msg) return nullptr;
-    *(msgb_put(msg, 1)) = (uint8_t)(GSM48_PDISC_CC | 0x80 | ((ti & 0x07) << 4));
+    *(msgb_put(msg, 1)) = (uint8_t)(GSM48_PDISC_CC | ((ti & 0x07) << 4));
     *(msgb_put(msg, 1)) = GSM48_MT_CC_ALERTING;
     std::cout << COLOR_CYAN << "✓ Сгенерировано DTAP CC Alerting" << COLOR_RESET << "\n";
     std::cout << COLOR_BLUE << "  TI:     " << COLOR_GREEN << (int)ti << COLOR_RESET << "\n";
@@ -11179,8 +11223,7 @@ static struct msgb *generate_dtap_cc_disconnect(uint8_t ti, bool net_to_ms,
                                                  uint8_t cc_cause) {
     struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP CC Disconnect");
     if (!msg) return nullptr;
-    uint8_t ti_flag = net_to_ms ? 0x80 : 0x00;
-    *(msgb_put(msg, 1)) = (uint8_t)(GSM48_PDISC_CC | ti_flag | ((ti & 0x07) << 4));
+    *(msgb_put(msg, 1)) = (uint8_t)(GSM48_PDISC_CC | ((ti & 0x07) << 4));
     *(msgb_put(msg, 1)) = GSM48_MT_CC_DISCONNECT;
     // Cause IE: tag=0x08, len=2, location=user(0x80), cause=cc_cause
     *(msgb_put(msg, 1)) = 0x08;
@@ -11874,6 +11917,237 @@ static struct msgb *generate_dtap_sms_cp_error(uint8_t ti, uint8_t cp_cause) {
     std::cout << COLOR_BLUE << "  Размер:  " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
     return msg;
 }
+
+// ── P42: DTAP SMS RP Messages (3GPP TS 24.011 §7.2) ──────────────────────────
+// SMS Relay Protocol (RP) — внутри CP-DATA User Data
+// RP-Message-Type: 0=RP-DATA (MO), 1=RP-DATA (MT), 2=RP-ACK, 3=RP-ERROR, 4=RP-SMMA
+
+// RP-DATA (MO: MS→SC): msg-ref(1) + originator-addr + destination-addr + TPDU
+static struct msgb *generate_sms_rp_data_mo(uint8_t msg_ref) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "SMS RP-DATA MO");
+    if (!msg) return nullptr;
+    // RP header (no TI, no PD in this minimal version — for embedding in CP-DATA User Data)
+    *(msgb_put(msg, 1)) = 0x00;   // RP-Message-Type=0 (RP-DATA MO)
+    *(msgb_put(msg, 1)) = msg_ref; // RP-Message-Reference
+    // Originating Address (Optional, minimal: length=0)
+    *(msgb_put(msg, 1)) = 0x00;   // originator-address length = 0
+    // Destination Address (Optional, minimal: length=0)
+    *(msgb_put(msg, 1)) = 0x00;   // destination-address length = 0
+    // TPDU (minimal: single byte, TP-MTI=0=SMS-Deliver)
+    *(msgb_put(msg, 1)) = 0x00;   // minimal TP-MTI
+    std::cout << COLOR_CYAN << "✓ Сгенерировано SMS RP-DATA (MO)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Msg Ref: " << COLOR_GREEN << (int)msg_ref << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// RP-DATA (MT: SC→MS)
+static struct msgb *generate_sms_rp_data_mt(uint8_t msg_ref) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "SMS RP-DATA MT");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = 0x01;   // RP-Message-Type=1 (RP-DATA MT)
+    *(msgb_put(msg, 1)) = msg_ref; // RP-Message-Reference
+    *(msgb_put(msg, 1)) = 0x00;   // originator-address length = 0
+    *(msgb_put(msg, 1)) = 0x00;   // destination-address length = 0
+    *(msgb_put(msg, 1)) = 0x04;   // minimal TP-MTI=1 (SMS-Submit)
+    std::cout << COLOR_CYAN << "✓ Сгенерировано SMS RP-DATA (MT)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Msg Ref: " << COLOR_GREEN << (int)msg_ref << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// RP-ACK: msg-ref(1) + optional user-data
+static struct msgb *generate_sms_rp_ack(uint8_t msg_ref) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "SMS RP-ACK");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = 0x02;   // RP-Message-Type=2 (RP-ACK)
+    *(msgb_put(msg, 1)) = msg_ref; // RP-Message-Reference
+    // Optional user-data (empty for minimal)
+    std::cout << COLOR_CYAN << "✓ Сгенерировано SMS RP-ACK" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Msg Ref: " << COLOR_GREEN << (int)msg_ref << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// RP-ERROR: msg-ref(1) + RP-Cause + optional user-data
+// RP-Cause: 1=unallocated number, 27=destination out of order, 28=network out of order, etc.
+static struct msgb *generate_sms_rp_error(uint8_t msg_ref, uint8_t rp_cause) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "SMS RP-ERROR");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = 0x03;   // RP-Message-Type=3 (RP-ERROR)
+    *(msgb_put(msg, 1)) = msg_ref; // RP-Message-Reference
+    *(msgb_put(msg, 1)) = rp_cause; // RP-Cause
+    // Optional Diagnostic field (empty for minimal)
+    std::cout << COLOR_CYAN << "✓ Сгенерировано SMS RP-ERROR" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Msg Ref: " << COLOR_GREEN << (int)msg_ref << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  RP-Cause: " << COLOR_GREEN << "0x" << std::hex << (int)rp_cause << std::dec << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// RP-SMMA (SM Memory Available): msg-ref(1) + (no other fields)
+static struct msgb *generate_sms_rp_smma(uint8_t msg_ref) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "SMS RP-SMMA");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = 0x04;   // RP-Message-Type=4 (RP-SMMA)
+    *(msgb_put(msg, 1)) = msg_ref; // RP-Message-Reference
+    std::cout << COLOR_CYAN << "✓ Сгенерировано SMS RP-SMMA" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Msg Ref: " << COLOR_GREEN << (int)msg_ref << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// P42: SMS MMS-DATA (MO/MT) and MMS-ACK variants
+static struct msgb *generate_sms_mms_data_mo(uint8_t msg_ref) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "SMS MMS-DATA-MO");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = 0x05;   // MMS-Message-Type=5 (MMS-DATA MO variant)
+    *(msgb_put(msg, 1)) = msg_ref; // Message-Reference
+    std::cout << COLOR_CYAN << "✓ Сгенерировано SMS MMS-DATA (MO)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Msg Ref: " << COLOR_GREEN << (int)msg_ref << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+static struct msgb *generate_sms_mms_data_mt(uint8_t msg_ref) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "SMS MMS-DATA-MT");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = 0x06;   // MMS-Message-Type=6 (MMS-DATA MT variant)
+    *(msgb_put(msg, 1)) = msg_ref; // Message-Reference
+    std::cout << COLOR_CYAN << "✓ Сгенерировано SMS MMS-DATA (MT)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Msg Ref: " << COLOR_GREEN << (int)msg_ref << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+static struct msgb *generate_sms_mms_ack(uint8_t msg_ref) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "SMS MMS-ACK");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = 0x07;   // MMS-Message-Type=7 (MMS-ACK)
+    *(msgb_put(msg, 1)) = msg_ref; // Message-Reference
+    std::cout << COLOR_CYAN << "✓ Сгенерировано SMS MMS-ACK" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Msg Ref: " << COLOR_GREEN << (int)msg_ref << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// P41: SI 16–20 (Billing / Telephony User Parts) Generators
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * SI 16 (BiCC) — Billing Information Collection
+ * 3GPP TS 29.002 / ITU-T Recommendation Q.763
+ * Used for charging information in ISUP context
+ */
+static struct msgb *generate_si_bicc(uint8_t billing_id) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "SI BiCC");
+    if (!msg) return nullptr;
+    
+    // SI 16 BiCC header (minimal structure)
+    *(msgb_put(msg, 1)) = 0x10;  // SI=16 (BiCC indicator)
+    *(msgb_put(msg, 1)) = 0x01;  // BiCC version
+    *(msgb_put(msg, 1)) = billing_id; // Billing ID / Tariff Class
+    
+    std::cout << COLOR_CYAN << "✓ Сгенерировано SI 16 (BiCC)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  BiCC Version: " << COLOR_GREEN << "1" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Billing ID: " << COLOR_GREEN << (int)billing_id << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+/**
+ * SI 17 (DUP) — Data User Part
+ * 3GPP TS 29.002 / ITU-T Recommendation Q.763
+ * Protocol for transparent data transmission
+ */
+static struct msgb *generate_si_dup() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "SI DUP");
+    if (!msg) return nullptr;
+    
+    // SI 17 DUP header (minimal structure)
+    *(msgb_put(msg, 1)) = 0x11;  // SI=17 (DUP indicator)
+    *(msgb_put(msg, 1)) = 0x01;  // DUP version
+    *(msgb_put(msg, 1)) = 0x00;  // Data type (transparent data)
+    *(msgb_put(msg, 1)) = 0x08;  // Data length (example: 8 bytes)
+    
+    // Example transparent data payload
+    for (int i = 0; i < 8; i++)
+        *(msgb_put(msg, 1)) = 0xAA + i; // Dummy data pattern
+    
+    std::cout << COLOR_CYAN << "✓ Сгенерировано SI 17 (DUP)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  DUP Version: " << COLOR_GREEN << "1" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Data Payload: " << COLOR_GREEN << "8 bytes" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+/**
+ * SI 18 (TUP) — Telephony User Part
+ * 3GPP TS 29.002 / ITU-T Recommendation Q.763
+ * Protocol for telephone calls and audio signaling
+ */
+static struct msgb *generate_si_tup() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "SI TUP");
+    if (!msg) return nullptr;
+    
+    // SI 18 TUP header (minimal structure)
+    *(msgb_put(msg, 1)) = 0x12;  // SI=18 (TUP indicator)
+    *(msgb_put(msg, 1)) = 0x01;  // TUP version
+    *(msgb_put(msg, 1)) = 0x80;  // Call control message (TUP MT)
+    *(msgb_put(msg, 1)) = 0x00;  // Codec: G.711 PCM μ-law
+    
+    std::cout << COLOR_CYAN << "✓ Сгенерировано SI 18 (TUP)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  TUP Version: " << COLOR_GREEN << "1" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Codec: " << COLOR_GREEN << "G.711 (μ-law)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+/**
+ * SI 19 (ISOMAP) — ISO-SCCP Mapping
+ * Protocol for mapping ISO services over SCCP
+ */
+static struct msgb *generate_si_isomap() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "SI ISOMAP");
+    if (!msg) return nullptr;
+    
+    // SI 19 ISOMAP header (minimal structure)
+    *(msgb_put(msg, 1)) = 0x13;  // SI=19 (ISOMAP indicator)
+    *(msgb_put(msg, 1)) = 0x02;  // ISOMAP version 2
+    *(msgb_put(msg, 1)) = 0x01;  // Service type (ISO COTP)
+    *(msgb_put(msg, 1)) = 0x00;  // Options: none
+    
+    std::cout << COLOR_CYAN << "✓ Сгенерировано SI 19 (ISOMAP)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  ISOMAP Version: " << COLOR_GREEN << "2" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Service: " << COLOR_GREEN << "ISO COTP" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+/**
+ * SI 20 (ITUUP) — ITU User Part
+ * 3GPP TS 29.002 / ITU-T Recommendation Q.763
+ * Protocol for telephone calls with advanced signaling
+ */
+static struct msgb *generate_si_ituup() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "SI ITUUP");
+    if (!msg) return nullptr;
+    
+    // SI 20 ITUUP header (minimal structure)
+    *(msgb_put(msg, 1)) = 0x14;  // SI=20 (ITUUP indicator)
+    *(msgb_put(msg, 1)) = 0x02;  // ITUUP version 2
+    *(msgb_put(msg, 1)) = 0x00;  // Call control (voice call)
+    *(msgb_put(msg, 1)) = 0x00;  // Mode: transparent
+    *(msgb_put(msg, 1)) = 0x01;  // Payload type: audio
+    
+    std::cout << COLOR_CYAN << "✓ Сгенерировано SI 20 (ITUUP)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  ITUUP Version: " << COLOR_GREEN << "2" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Payload: " << COLOR_GREEN << "Audio (voice)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
 int main(int argc, char** argv) {
     void *ctx = talloc_named_const(NULL, 0, "vmsc_context");
 
@@ -12305,6 +12579,7 @@ int main(int argc, char** argv) {
     // P13: BSSMAP Handover (3GPP TS 48.008 §3.2.1)
     bool     do_bssmap_ho_required  = false;  // BSSMAP Handover Required        0x11
     bool     do_bssmap_ho_command   = false;  // BSSMAP Handover Command         0x12
+    bool     do_bssmap_ho_complete  = false;  // P41: BSSMAP Handover Complete   0x14
     bool     do_bssmap_ho_succeeded = false;  // BSSMAP Handover Succeeded       0x14
     bool     do_bssmap_ho_performed = false;  // BSSMAP Handover Performed       0x17
     bool     do_bssmap_ho_candidate = false;  // BSSMAP HO Candidate Enquiry     0x4F
@@ -12367,6 +12642,25 @@ int main(int argc, char** argv) {
     bool     do_dtap_sms_cp_ack        = false;  // SMS CP-ACK                0x04
     bool     do_dtap_sms_cp_error      = false;  // SMS CP-ERROR              0x10
     uint8_t  cp_cause_param            = 0x11;   // --cp-cause (0x11=network failure)
+    // P42: SMS RP Messages (3GPP TS 24.011)
+    bool     do_sms_rp_data_mo         = false;  // P42: SMS RP-DATA (MO)
+    bool     do_sms_rp_data_mt         = false;  // P42: SMS RP-DATA (MT)
+    bool     do_sms_rp_ack             = false;  // P42: SMS RP-ACK
+    bool     do_sms_rp_error           = false;  // P42: SMS RP-ERROR
+    bool     do_sms_rp_smma            = false;  // P42: SMS RP-SMMA
+    bool     do_sms_mms_data_mo        = false;  // P42: SMS MMS-DATA (MO)
+    bool     do_sms_mms_data_mt        = false;  // P42: SMS MMS-DATA (MT)
+    bool     do_sms_mms_ack            = false;  // P42: SMS MMS-ACK
+    uint8_t  sms_msg_ref_param         = 0x01;   // --sms-msg-ref (message reference)
+    uint8_t  rp_cause_param            = 0x01;   // --rp-cause (1=unallocated number)
+    // P41: SI 16–20 (Billing/Telephony User Parts)
+    bool     do_si_bicc                = false;  // P41: SI 16 (BiCC) — Billing Information Collection
+    bool     do_si_dup                 = false;  // P41: SI 17 (DUP) — Data User Part
+    bool     do_si_tup                 = false;  // P41: SI 18 (TUP) — Telephony User Part
+    bool     do_si_isomap              = false;  // P41: SI 19 (ISOMAP) — ISO-SCCP Mapping
+    bool     do_si_ituup               = false;  // P41: SI 20 (ITUUP) — ITU User Part
+    uint8_t  si_billing_id_param       = 0x01;   // --si-billing-id (billing ID)
+    uint8_t  si_call_id_param          = 0x42;   // --si-call-id (call identification)
     // P14: DTAP MM Supplementary (3GPP TS 24.008)
     bool     do_dtap_tmsi_realloc_cmd   = false;  // TMSI Reallocation Command   MM 0x1A
     bool     do_dtap_tmsi_realloc_compl = false;  // TMSI Reallocation Complete  MM 0x1B
@@ -12391,6 +12685,7 @@ int main(int argc, char** argv) {
     bool     do_dtap_rr_assignment_complete = false; // RR Assignment Complete  MT=0x29
     bool     do_dtap_rr_assignment_failure  = false; // RR Assignment Failure   MT=0x2F
     bool     do_dtap_rr_handover_command    = false; // RR Handover Command     MT=0x2B
+    bool     do_dtap_rr_channel_request      = false; // P20: RR Channel Request  MT=0x23
     // P30: DTAP RR Handover Complete/Failure / Measurement Report / Channel Mode Modify
     bool     do_dtap_rr_handover_complete     = false; // RR Handover Complete      MT=0x2C
     bool     do_dtap_rr_handover_failure      = false; // RR Handover Failure       MT=0x28
@@ -12469,6 +12764,7 @@ int main(int argc, char** argv) {
     uint8_t  mm_abort_cause_param       = 0x06;   // --mm-abort-cause (0x06=Illegal ME)  // Ciphering Mode Complete     RR 0x32
     // P27: DTAP MM Status / CM Re-establishment
     bool     do_dtap_mm_status          = false; // MM Status              0x31  (MS↔MSC)
+    bool     do_dtap_mm_null            = false; // P41: MM NULL           0x30  (MS↔MSC, heartbeat)
     bool     do_dtap_mm_cm_reest_req    = false; // MM CM Re-establishment 0x28  (MS→MSC)
     // P28: DTAP MM Auth Failure / CM Service Abort / CM Service Prompt
     bool     do_dtap_mm_auth_failure     = false; // MM Auth Failure       MT=0x1C
@@ -13701,6 +13997,10 @@ int main(int argc, char** argv) {
             do_bssmap_ho_command = true;
             do_lu = false;  do_paging = false;
         }
+        else if (arg == "--send-bssmap-ho-complete") {  // P41
+            do_bssmap_ho_complete = true;
+            do_lu = false;  do_paging = false;
+        }
         else if (arg == "--send-bssmap-ho-succeeded") {
             do_bssmap_ho_succeeded = true;
             do_lu = false;  do_paging = false;
@@ -13763,6 +14063,7 @@ int main(int argc, char** argv) {
         else if (arg == "--send-dtap-mm-auth-reject") { do_dtap_mm_auth_reject = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-dtap-mm-abort")        { do_dtap_mm_abort = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-dtap-mm-status")        { do_dtap_mm_status       = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-dtap-mm-null")          { do_dtap_mm_null         = true; do_lu = false; do_paging = false; }  // P41
         else if (arg == "--send-dtap-mm-cm-reest-req")  { do_dtap_mm_cm_reest_req = true; do_lu = false; do_paging = false; }
         // P28: MM Auth Failure / CM Service Abort / CM Service Prompt
         else if (arg == "--send-dtap-mm-auth-failure")     { do_dtap_mm_auth_failure     = true; do_lu = false; do_paging = false; }
@@ -13795,6 +14096,7 @@ int main(int argc, char** argv) {
         else if (arg == "--send-dtap-rr-assignment-command")  { do_dtap_rr_assignment_command  = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-dtap-rr-assignment-complete") { do_dtap_rr_assignment_complete = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-dtap-rr-assignment-failure")  { do_dtap_rr_assignment_failure  = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-rr-channel-request")          { do_dtap_rr_channel_request     = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-dtap-rr-handover-command")    { do_dtap_rr_handover_command    = true; do_lu = false; do_paging = false; }
         // P30: DTAP RR HO Complete/Failure / Measurement Report / Channel Mode Modify
         else if (arg == "--send-dtap-rr-handover-complete")   { do_dtap_rr_handover_complete   = true; do_lu = false; do_paging = false; }
@@ -14026,6 +14328,64 @@ int main(int argc, char** argv) {
             do_lu = false;  do_paging = false;
         }
         else if (arg == "--cp-cause" && i + 1 < argc) cp_cause_param = (uint8_t)std::stoul(argv[++i], nullptr, 0);
+        // P42: SMS RP Messages
+        else if (arg == "--send-sms-rp-data-mo") {
+            do_sms_rp_data_mo = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-sms-rp-data-mt") {
+            do_sms_rp_data_mt = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-sms-rp-ack") {
+            do_sms_rp_ack = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-sms-rp-error") {
+            do_sms_rp_error = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-sms-rp-smma") {
+            do_sms_rp_smma = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-sms-mms-data-mo") {
+            do_sms_mms_data_mo = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-sms-mms-data-mt") {
+            do_sms_mms_data_mt = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-sms-mms-ack") {
+            do_sms_mms_ack = true;
+            do_lu = false;  do_paging = false;
+        }
+        // SI 16–20 parsers
+        else if (arg == "--send-si-bicc") {
+            do_si_bicc = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-si-dup") {
+            do_si_dup = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-si-tup") {
+            do_si_tup = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-si-isomap") {
+            do_si_isomap = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-si-ituup") {
+            do_si_ituup = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--sms-msg-ref" && i + 1 < argc) sms_msg_ref_param = (uint8_t)std::stoul(argv[++i]);
+        else if (arg == "--rp-cause" && i + 1 < argc) rp_cause_param = (uint8_t)std::stoul(argv[++i], nullptr, 0);
+        else if (arg == "--si-billing-id" && i + 1 < argc) si_billing_id_param = (uint8_t)std::stoul(argv[++i], nullptr, 0);
+        else if (arg == "--si-call-id" && i + 1 < argc) si_call_id_param = (uint8_t)std::stoul(argv[++i], nullptr, 0);
         else if (arg == "--rand"       && i + 1 < argc) rand_param        = argv[++i];
         else if (arg == "--sres"       && i + 1 < argc) sres_param        = argv[++i];
         else if (arg == "--cksn"       && i + 1 < argc) cksn_param        = (uint8_t)std::stoul(argv[++i]);
@@ -20089,9 +20449,13 @@ int main(int argc, char** argv) {
     // ── A-interface: BSSMAP Reset ────────────────────────────────────────────
     if (do_bssmap_reset) {
         print_section_header("[BSSMAP Reset]", "A-interface  (MSC \xe2\x86\x92 BSC)");
-        std::cout << "\n";
         struct msgb *bssmap_msg = generate_bssmap_reset(clear_cause);
         if (bssmap_msg) {
+            std::cout << COLOR_YELLOW << "Raw hex (BSSMAP):" << COLOR_RESET << "\n    ";
+            for (int i = 0; i < bssmap_msg->len; ++i) {
+                printf("%02x ", bssmap_msg->data[i]);
+            }
+            std::cout << "\n\n";
             if (send_udp) {
                 struct msgb *sccp_msg = wrap_in_sccp_cr(bssmap_msg, a_ssn);
                 if (sccp_msg) {
@@ -20236,6 +20600,30 @@ int main(int argc, char** argv) {
         std::cout << "\n";
         struct msgb *bssmap_msg = generate_bssmap_ho_command(ho_target_lac, ho_target_cell);
         if (bssmap_msg) {
+            if (send_udp) {
+                struct msgb *sccp_msg = wrap_in_sccp_cr(bssmap_msg, a_ssn);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, m3ua_opc, m3ua_dpc, m3ua_ni, a_si, mp, sls);
+                    if (m3ua_msg) {
+                        send_message_udp(m3ua_msg->data, m3ua_msg->len, remote_ip.c_str(), remote_port);
+                        msgb_free(m3ua_msg);
+                    }
+                    msgb_free(sccp_msg);
+                }
+            }
+            msgb_free(bssmap_msg);
+        }
+    }
+
+    if (do_bssmap_ho_complete) {  // P41
+        print_section_header("[BSSMAP Handover Complete]", "A-interface  (BSC → MSC)  MT=0x14");
+        struct msgb *bssmap_msg = generate_bssmap_ho_complete();
+        if (bssmap_msg) {
+            std::cout << COLOR_YELLOW << "Raw hex (BSSMAP):" << COLOR_RESET << "\n    ";
+            for (int i = 0; i < bssmap_msg->len; ++i) {
+                printf("%02x ", bssmap_msg->data[i]);
+            }
+            std::cout << "\n\n";
             if (send_udp) {
                 struct msgb *sccp_msg = wrap_in_sccp_cr(bssmap_msg, a_ssn);
                 if (sccp_msg) {
@@ -20437,7 +20825,12 @@ int main(int argc, char** argv) {
     auto send_dtap_a = [&](struct msgb *dtap_msg, const char *hdr, const char *sub) {
         if (!dtap_msg) return;
         print_section_header(hdr, sub);
-        std::cout << "\n";
+        // Output raw DTAP hex
+        std::cout << COLOR_YELLOW << "Raw hex (DTAP):" << COLOR_RESET << "\n    ";
+        for (int i = 0; i < dtap_msg->len; ++i) {
+            printf("%02x ", dtap_msg->data[i]);
+        }
+        std::cout << "\n\n";
         if (send_udp) {
             struct msgb *bssap_msg = wrap_in_bssap_dtap(dtap_msg);
             if (bssap_msg) {
@@ -20460,7 +20853,12 @@ int main(int argc, char** argv) {
     auto send_bssmap_a = [&](struct msgb *bssap_msg, const char *hdr, const char *sub) {
         if (!bssap_msg) return;
         print_section_header(hdr, sub);
-        std::cout << "\n";
+        // Output raw BSSMAP hex
+        std::cout << COLOR_YELLOW << "Raw hex (BSSMAP):" << COLOR_RESET << "\n    ";
+        for (int i = 0; i < bssap_msg->len; ++i) {
+            printf("%02x ", bssap_msg->data[i]);
+        }
+        std::cout << "\n\n";
         if (send_udp) {
             struct msgb *sccp_msg = wrap_in_sccp_cr(bssap_msg, a_ssn);
             if (sccp_msg) {
@@ -20747,6 +21145,174 @@ int main(int argc, char** argv) {
     if (do_dtap_sms_cp_error)
         send_dtap_a(generate_dtap_sms_cp_error(ti_param, cp_cause_param),
                     "[DTAP SMS CP-ERROR]", "A-interface");
+
+    // P42: SMS RP Messages
+    if (do_sms_rp_data_mo) {
+        print_section_header("[SMS RP-DATA (MO)]", "A-interface  (MS → MSC, raw RP)");
+        std::cout << "\n";
+        struct msgb *rp_msg = generate_sms_rp_data_mo(sms_msg_ref_param);
+        if (rp_msg) {
+            std::cout << COLOR_BLUE << "  Raw bytes: ";
+            for (int i = 0; i < rp_msg->len; i++)
+                std::cout << COLOR_GREEN << std::hex << std::setw(2) << std::setfill('0') << (int)rp_msg->data[i] << " ";
+            std::cout << COLOR_RESET << "\n\n";
+            msgb_free(rp_msg);
+        }
+    }
+    if (do_sms_rp_data_mt) {
+        print_section_header("[SMS RP-DATA (MT)]", "A-interface  (SC → MSC, raw RP)");
+        std::cout << "\n";
+        struct msgb *rp_msg = generate_sms_rp_data_mt(sms_msg_ref_param);
+        if (rp_msg) {
+            std::cout << COLOR_BLUE << "  Raw bytes: ";
+            for (int i = 0; i < rp_msg->len; i++)
+                std::cout << COLOR_GREEN << std::hex << std::setw(2) << std::setfill('0') << (int)rp_msg->data[i] << " ";
+            std::cout << COLOR_RESET << "\n\n";
+            msgb_free(rp_msg);
+        }
+    }
+    if (do_sms_rp_ack) {
+        print_section_header("[SMS RP-ACK]", "A-interface  (MS ↔ MSC, raw RP)");
+        std::cout << "\n";
+        struct msgb *rp_msg = generate_sms_rp_ack(sms_msg_ref_param);
+        if (rp_msg) {
+            std::cout << COLOR_BLUE << "  Raw bytes: ";
+            for (int i = 0; i < rp_msg->len; i++)
+                std::cout << COLOR_GREEN << std::hex << std::setw(2) << std::setfill('0') << (int)rp_msg->data[i] << " ";
+            std::cout << COLOR_RESET << "\n\n";
+            msgb_free(rp_msg);
+        }
+    }
+    if (do_sms_rp_error) {
+        print_section_header("[SMS RP-ERROR]", "A-interface  (MS ↔ MSC, raw RP)");
+        std::cout << "\n";
+        struct msgb *rp_msg = generate_sms_rp_error(sms_msg_ref_param, rp_cause_param);
+        if (rp_msg) {
+            std::cout << COLOR_BLUE << "  Raw bytes: ";
+            for (int i = 0; i < rp_msg->len; i++)
+                std::cout << COLOR_GREEN << std::hex << std::setw(2) << std::setfill('0') << (int)rp_msg->data[i] << " ";
+            std::cout << COLOR_RESET << "\n\n";
+            msgb_free(rp_msg);
+        }
+    }
+    if (do_sms_rp_smma) {
+        print_section_header("[SMS RP-SMMA]", "A-interface  (MS → MSC, raw RP)");
+        std::cout << "\n";
+        struct msgb *rp_msg = generate_sms_rp_smma(sms_msg_ref_param);
+        if (rp_msg) {
+            std::cout << COLOR_BLUE << "  Raw bytes: ";
+            for (int i = 0; i < rp_msg->len; i++)
+                std::cout << COLOR_GREEN << std::hex << std::setw(2) << std::setfill('0') << (int)rp_msg->data[i] << " ";
+            std::cout << COLOR_RESET << "\n\n";
+            msgb_free(rp_msg);
+        }
+    }
+    if (do_sms_mms_data_mo) {
+        print_section_header("[SMS MMS-DATA (MO)]", "A-interface  (MS → MSC, MMS MO variant)");
+        std::cout << "\n";
+        struct msgb *mms_msg = generate_sms_mms_data_mo(sms_msg_ref_param);
+        if (mms_msg) {
+            std::cout << COLOR_BLUE << "  Raw bytes: ";
+            for (int i = 0; i < mms_msg->len; i++)
+                std::cout << COLOR_GREEN << std::hex << std::setw(2) << std::setfill('0') << (int)mms_msg->data[i] << " ";
+            std::cout << COLOR_RESET << "\n\n";
+            msgb_free(mms_msg);
+        }
+    }
+    if (do_sms_mms_data_mt) {
+        print_section_header("[SMS MMS-DATA (MT)]", "A-interface  (MSC → MS, MMS MT variant)");
+        std::cout << "\n";
+        struct msgb *mms_msg = generate_sms_mms_data_mt(sms_msg_ref_param);
+        if (mms_msg) {
+            std::cout << COLOR_BLUE << "  Raw bytes: ";
+            for (int i = 0; i < mms_msg->len; i++)
+                std::cout << COLOR_GREEN << std::hex << std::setw(2) << std::setfill('0') << (int)mms_msg->data[i] << " ";
+            std::cout << COLOR_RESET << "\n\n";
+            msgb_free(mms_msg);
+        }
+    }
+    if (do_sms_mms_ack) {
+        print_section_header("[SMS MMS-ACK]", "A-interface  (MS ↔ MSC, MMS ACK variant)");
+        std::cout << "\n";
+        struct msgb *mms_msg = generate_sms_mms_ack(sms_msg_ref_param);
+        if (mms_msg) {
+            std::cout << COLOR_BLUE << "  Raw bytes: ";
+            for (int i = 0; i < mms_msg->len; i++)
+                std::cout << COLOR_GREEN << std::hex << std::setw(2) << std::setfill('0') << (int)mms_msg->data[i] << " ";
+            std::cout << COLOR_RESET << "\n\n";
+            msgb_free(mms_msg);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // P41: SI 16–20 (Billing / Telephony User Parts) Output
+    // ══════════════════════════════════════════════════════════════════════════
+
+    if (do_si_bicc) {
+        print_section_header("[SI 16 BiCC]", "ISUP-interface  (Billing Information)");
+        std::cout << "\n";
+        struct msgb *si_msg = generate_si_bicc(si_billing_id_param);
+        if (si_msg) {
+            std::cout << COLOR_BLUE << "  Raw bytes: ";
+            for (int i = 0; i < si_msg->len; i++)
+                std::cout << COLOR_GREEN << std::hex << std::setw(2) << std::setfill('0') << (int)si_msg->data[i] << " ";
+            std::cout << COLOR_RESET << "\n\n";
+            msgb_free(si_msg);
+        }
+    }
+
+    if (do_si_dup) {
+        print_section_header("[SI 17 DUP]", "Data User Part  (Transparent data transmission)");
+        std::cout << "\n";
+        struct msgb *si_msg = generate_si_dup();
+        if (si_msg) {
+            std::cout << COLOR_BLUE << "  Raw bytes: ";
+            for (int i = 0; i < si_msg->len; i++)
+                std::cout << COLOR_GREEN << std::hex << std::setw(2) << std::setfill('0') << (int)si_msg->data[i] << " ";
+            std::cout << COLOR_RESET << "\n\n";
+            msgb_free(si_msg);
+        }
+    }
+
+    if (do_si_tup) {
+        print_section_header("[SI 18 TUP]", "Telephony User Part  (Audio signaling)");
+        std::cout << "\n";
+        struct msgb *si_msg = generate_si_tup();
+        if (si_msg) {
+            std::cout << COLOR_BLUE << "  Raw bytes: ";
+            for (int i = 0; i < si_msg->len; i++)
+                std::cout << COLOR_GREEN << std::hex << std::setw(2) << std::setfill('0') << (int)si_msg->data[i] << " ";
+            std::cout << COLOR_RESET << "\n\n";
+            msgb_free(si_msg);
+        }
+    }
+
+    if (do_si_isomap) {
+        print_section_header("[SI 19 ISOMAP]", "ISO-SCCP Mapping  (ISO services over SCCP)");
+        std::cout << "\n";
+        struct msgb *si_msg = generate_si_isomap();
+        if (si_msg) {
+            std::cout << COLOR_BLUE << "  Raw bytes: ";
+            for (int i = 0; i < si_msg->len; i++)
+                std::cout << COLOR_GREEN << std::hex << std::setw(2) << std::setfill('0') << (int)si_msg->data[i] << " ";
+            std::cout << COLOR_RESET << "\n\n";
+            msgb_free(si_msg);
+        }
+    }
+
+    if (do_si_ituup) {
+        print_section_header("[SI 20 ITUUP]", "ITU User Part  (Advanced telephony signaling)");
+        std::cout << "\n";
+        struct msgb *si_msg = generate_si_ituup();
+        if (si_msg) {
+            std::cout << COLOR_BLUE << "  Raw bytes: ";
+            for (int i = 0; i < si_msg->len; i++)
+                std::cout << COLOR_GREEN << std::hex << std::setw(2) << std::setfill('0') << (int)si_msg->data[i] << " ";
+            std::cout << COLOR_RESET << "\n\n";
+            msgb_free(si_msg);
+        }
+    }
+
     // ── P14: DTAP MM Supplementary ──────────────────────────────────────────
 
     if (do_dtap_tmsi_realloc_cmd)
@@ -20775,6 +21341,9 @@ int main(int argc, char** argv) {
     if (do_dtap_mm_status)
         send_dtap_a(generate_dtap_mm_status(mm_status_cause_param),
                     "[DTAP MM Status]", "A-interface  (MS ↔ MSC)");
+    if (do_dtap_mm_null)  // P41
+        send_dtap_a(generate_dtap_mm_null(),
+                    "[DTAP MM NULL]", "A-interface  (MS ↔ MSC, heartbeat)");
     if (do_dtap_mm_cm_reest_req)
         send_dtap_a(generate_dtap_mm_cm_reest_req(imsi.c_str()),
                     "[DTAP MM CM Re-establishment Request]", "A-interface  (MS → MSC)");
@@ -20883,6 +21452,9 @@ int main(int argc, char** argv) {
     if (do_dtap_rr_assignment_failure)
         send_dtap_a(generate_dtap_rr_assignment_failure(rr_cause_param),
                     "[DTAP RR Assignment Failure]", "A-interface  (MS → BSC)");
+    if (do_dtap_rr_channel_request)
+        send_dtap_a(generate_dtap_rr_channel_request(),
+                    "[DTAP RR Channel Request]", "A-interface  (MS → BSC)");
     if (do_dtap_rr_handover_command)
         send_dtap_a(generate_dtap_rr_handover_command(rr_arfcn_param, rr_bsic_param),
                     "[DTAP RR Handover Command]", "A-interface  (BSC → MS)");
