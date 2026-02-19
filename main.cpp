@@ -3092,6 +3092,92 @@ static struct msgb *generate_isup_grs(uint16_t cic, uint8_t range_value) {
 }
 
 // ──────────────────────────────────────────────────────────────
+// P19: ISUP BLA — Blocking Acknowledgement (ITU-T Q.763 §3.5)
+// Response to BLO.  MT=0x15.  CIC [2 LE] + MT + EOP = 4 байта
+// ──────────────────────────────────────────────────────────────
+static struct msgb *generate_isup_bla(uint16_t cic) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "ISUP BLA");
+    if (!msg) return nullptr;
+
+    uint8_t *p = msgb_put(msg, 2);
+    p[0] = (uint8_t)(cic & 0xFF);
+    p[1] = (uint8_t)(cic >> 8);
+    *(msgb_put(msg, 1)) = 0x15;  // MT=BLA
+    *(msgb_put(msg, 1)) = 0x00;  // EOP
+
+    std::cout << COLOR_CYAN << "✓ Сгенерировано ISUP BLA (Blocking Acknowledgement)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  CIC:    " << COLOR_GREEN << cic << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT:     " << COLOR_GREEN << "0x15 (BLA)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ISUP BLA:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────
+// P19: ISUP UBA — Unblocking Acknowledgement (ITU-T Q.763 §3.35)
+// Response to UBL.  MT=0x16.  CIC [2 LE] + MT + EOP = 4 байта
+// ──────────────────────────────────────────────────────────────
+static struct msgb *generate_isup_uba(uint16_t cic) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "ISUP UBA");
+    if (!msg) return nullptr;
+
+    uint8_t *p = msgb_put(msg, 2);
+    p[0] = (uint8_t)(cic & 0xFF);
+    p[1] = (uint8_t)(cic >> 8);
+    *(msgb_put(msg, 1)) = 0x16;  // MT=UBA
+    *(msgb_put(msg, 1)) = 0x00;  // EOP
+
+    std::cout << COLOR_CYAN << "✓ Сгенерировано ISUP UBA (Unblocking Acknowledgement)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  CIC:    " << COLOR_GREEN << cic << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT:     " << COLOR_GREEN << "0x16 (UBA)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ISUP UBA:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────
+// P19: ISUP GRA — Group Reset Acknowledgement (ITU-T Q.763 §3.17)
+// Response to GRS.  MT=0x29.
+// Structure: CIC[2LE] + MT + ptr(1) + RS.len + range + status_bitmap + EOP
+//   RS.len = 1 + ceil((range+1)/8)
+//   status_bitmap: all zeros = all circuits successfully reset
+// ──────────────────────────────────────────────────────────────
+static struct msgb *generate_isup_gra(uint16_t cic, uint8_t range_value) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "ISUP GRA");
+    if (!msg) return nullptr;
+
+    uint8_t bitmap_bytes = (uint8_t)((range_value + 8) / 8);  // ceil((range+1)/8)
+    uint8_t rs_len       = (uint8_t)(1 + bitmap_bytes);        // range(1) + status_bitmap
+
+    uint8_t *p = msgb_put(msg, 2);
+    p[0] = (uint8_t)(cic & 0xFF);
+    p[1] = (uint8_t)(cic >> 8);
+    *(msgb_put(msg, 1)) = 0x29;              // MT=GRA
+    *(msgb_put(msg, 1)) = 0x01;              // pointer to Range and Status (1 octet fwd)
+    *(msgb_put(msg, 1)) = rs_len;            // Range and Status: length field
+    *(msgb_put(msg, 1)) = range_value & 0x7F; // Range (7 bits, bit8=spare)
+    uint8_t *bm = msgb_put(msg, bitmap_bytes);
+    memset(bm, 0x00, bitmap_bytes);          // Status: all zeros = all circuits reset OK
+    *(msgb_put(msg, 1)) = 0x00;              // EOP
+
+    std::cout << COLOR_CYAN << "✓ Сгенерировано ISUP GRA (Group Reset Acknowledgement)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  CIC:    " << COLOR_GREEN << cic << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Range:  " << COLOR_GREEN << (int)range_value
+              << " (" << (int)(range_value + 1) << " цепей: CIC " << cic << ".." << (cic + range_value) << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Status: " << COLOR_GREEN << "все нули (все цепи сброшены успешно)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT:     " << COLOR_GREEN << "0x29 (GRA)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ISUP GRA:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────
 // P17: M3UA ASP Management (RFC 4666 §3.5 / §3.6)
 //
 // M3UA Common Header (8 bytes):
@@ -3241,6 +3327,81 @@ static struct msgb *generate_m3ua_aspia() {
               << COLOR_BLUE << "  Type: "  << COLOR_GREEN << "0x02" << COLOR_RESET << "\n";
     std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
     std::cout << COLOR_YELLOW << "Raw hex ASPIA:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────
+// P19: M3UA ACK + Heartbeat messages (RFC 4666 §3.3)
+//
+// ASPSM (Class=0x03):
+//   ASPDN-ACK  Type=0x05  — ASP Down Ack
+//   BEAT       Type=0x03  — Heartbeat (no mandatory params)
+//   BEAT-ACK   Type=0x06  — Heartbeat Ack
+// ASPTM (Class=0x04):
+//   ASPIA-ACK  Type=0x04  — ASP Inactive Ack
+// ──────────────────────────────────────────────────────────────
+
+// ── ASPDN-ACK ─────────────────────────────────────────────────
+static struct msgb *generate_m3ua_aspdn_ack() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "M3UA ASPDN-ACK");
+    if (!msg) return nullptr;
+    uint8_t *lp = m3ua_put_header(msg, 0x03, 0x05);
+    m3ua_fix_len(msg, lp);
+    std::cout << COLOR_CYAN << "✓ Сгенерировано M3UA ASPDN-ACK (ASP Down Ack)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Class: " << COLOR_GREEN << "0x03 (ASPSM)" << COLOR_RESET
+              << COLOR_BLUE << "  Type: " << COLOR_GREEN << "0x05" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ASPDN-ACK:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ── ASPIA-ACK ─────────────────────────────────────────────────
+static struct msgb *generate_m3ua_aspia_ack() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "M3UA ASPIA-ACK");
+    if (!msg) return nullptr;
+    uint8_t *lp = m3ua_put_header(msg, 0x04, 0x04);
+    m3ua_fix_len(msg, lp);
+    std::cout << COLOR_CYAN << "✓ Сгенерировано M3UA ASPIA-ACK (ASP Inactive Ack)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Class: " << COLOR_GREEN << "0x04 (ASPTM)" << COLOR_RESET
+              << COLOR_BLUE << "  Type: " << COLOR_GREEN << "0x04" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ASPIA-ACK:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ── BEAT (Heartbeat) ──────────────────────────────────────────
+static struct msgb *generate_m3ua_beat() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "M3UA BEAT");
+    if (!msg) return nullptr;
+    uint8_t *lp = m3ua_put_header(msg, 0x03, 0x03);
+    m3ua_fix_len(msg, lp);
+    std::cout << COLOR_CYAN << "✓ Сгенерировано M3UA BEAT (Heartbeat)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Class: " << COLOR_GREEN << "0x03 (ASPSM)" << COLOR_RESET
+              << COLOR_BLUE << "  Type: " << COLOR_GREEN << "0x03" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex BEAT:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ── BEAT-ACK (Heartbeat Ack) ──────────────────────────────────
+static struct msgb *generate_m3ua_beat_ack() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "M3UA BEAT-ACK");
+    if (!msg) return nullptr;
+    uint8_t *lp = m3ua_put_header(msg, 0x03, 0x06);
+    m3ua_fix_len(msg, lp);
+    std::cout << COLOR_CYAN << "✓ Сгенерировано M3UA BEAT-ACK (Heartbeat Ack)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Class: " << COLOR_GREEN << "0x03 (ASPSM)" << COLOR_RESET
+              << COLOR_BLUE << "  Type: " << COLOR_GREEN << "0x06" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex BEAT-ACK:" << COLOR_RESET << "\n    ";
     for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
     std::cout << "\n\n";
     return msg;
@@ -5409,6 +5570,14 @@ int main(int argc, char** argv) {
     bool     do_m3ua_aspia     = false; // ASPIA     ASPTM Class=4 Type=2
     uint8_t  m3ua_tmt_param    = 2;     // --m3ua-tmt: 1=Override 2=Loadshare 3=Broadcast
     uint32_t m3ua_rc_param     = 0;     // --m3ua-rc:  Routing Context (0=не добавлять)
+    // P19: ISUP Circuit Management ACKs + M3UA Keepalive (RFC 4666)
+    bool     do_isup_bla       = false; // ISUP BLA Blocking Ack         MT=0x15  (ISUP-interface)
+    bool     do_isup_uba       = false; // ISUP UBA Unblocking Ack       MT=0x16  (ISUP-interface)
+    bool     do_isup_gra       = false; // ISUP GRA Group Reset Ack      MT=0x29  (ISUP-interface)
+    bool     do_m3ua_aspdn_ack = false; // ASPDN-ACK ASPSM Class=3 Type=5
+    bool     do_m3ua_aspia_ack = false; // ASPIA-ACK ASPTM Class=4 Type=4
+    bool     do_m3ua_beat      = false; // BEAT      ASPSM Class=3 Type=3
+    bool     do_m3ua_beat_ack  = false; // BEAT-ACK  ASPSM Class=3 Type=6
     // SMS / USSD (P4)
     bool     do_map_mo_fsm = false;    // MAP MO-ForwardSM (opCode=46)            (C-interface)
     bool     do_map_mt_fsm = false;    // MAP MT-ForwardSM (opCode=44)            (C-interface)
@@ -6160,6 +6329,35 @@ int main(int argc, char** argv) {
         }
         else if (arg == "--m3ua-rc" && i + 1 < argc) {
             m3ua_rc_param = (uint32_t)std::stoul(argv[++i], nullptr, 0);
+        }
+        // ── P19: ISUP Circuit Management ACKs + M3UA Keepalive ───────────────
+        else if (arg == "--send-isup-bla") {
+            do_isup_bla = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-isup-uba") {
+            do_isup_uba = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-isup-gra") {
+            do_isup_gra = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-m3ua-aspdn-ack") {
+            do_m3ua_aspdn_ack = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-m3ua-aspia-ack") {
+            do_m3ua_aspia_ack = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-m3ua-beat") {
+            do_m3ua_beat = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-m3ua-beat-ack") {
+            do_m3ua_beat_ack = true;
+            do_lu = false;  do_paging = false;
         }
         // P6: A-interface DTAP/BSSMAP
         else if (arg == "--send-dtap-auth-req") {
@@ -8144,6 +8342,134 @@ int main(int argc, char** argv) {
                 send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
             else if (send_udp)
                 std::cerr << COLOR_YELLOW << "\u26a0 M3UA: remote_ip \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\n" << COLOR_RESET;
+            msgb_free(asp_msg);
+        }
+    }
+
+    // ── P19: ISUP BLA (Blocking Acknowledgement) ─────────────────────────────
+    if (do_isup_bla) {
+        print_section_header("[ISUP BLA]", "ISUP-interface  (Blocking Acknowledgement, MT=0x15)");
+        std::cout << "\n";
+        uint32_t isup_opc = (isup_m3ua_ni == 0) ? isup_opc_ni0 : isup_opc_ni2;
+        uint32_t isup_dpc = (isup_m3ua_ni == 0) ? isup_dpc_ni0 : isup_dpc_ni2;
+        struct msgb *isup_msg = generate_isup_bla(cic_param);
+        if (isup_msg) {
+            if (send_udp && !isup_remote_ip.empty()) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(isup_msg, isup_opc, isup_dpc,
+                                                     isup_m3ua_ni, isup_si, mp,
+                                                     (uint8_t)(cic_param & 0xFF));
+                if (m3ua_msg) {
+                    send_message_udp(m3ua_msg->data, m3ua_msg->len,
+                                     isup_remote_ip.c_str(), isup_remote_port);
+                    msgb_free(m3ua_msg);
+                }
+            } else if (send_udp) {
+                std::cerr << COLOR_YELLOW << "⚠ ISUP-interface: remote_ip не задан\n" << COLOR_RESET;
+            }
+            msgb_free(isup_msg);
+        }
+    }
+
+    // ── P19: ISUP UBA (Unblocking Acknowledgement) ───────────────────────────
+    if (do_isup_uba) {
+        print_section_header("[ISUP UBA]", "ISUP-interface  (Unblocking Acknowledgement, MT=0x16)");
+        std::cout << "\n";
+        uint32_t isup_opc = (isup_m3ua_ni == 0) ? isup_opc_ni0 : isup_opc_ni2;
+        uint32_t isup_dpc = (isup_m3ua_ni == 0) ? isup_dpc_ni0 : isup_dpc_ni2;
+        struct msgb *isup_msg = generate_isup_uba(cic_param);
+        if (isup_msg) {
+            if (send_udp && !isup_remote_ip.empty()) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(isup_msg, isup_opc, isup_dpc,
+                                                     isup_m3ua_ni, isup_si, mp,
+                                                     (uint8_t)(cic_param & 0xFF));
+                if (m3ua_msg) {
+                    send_message_udp(m3ua_msg->data, m3ua_msg->len,
+                                     isup_remote_ip.c_str(), isup_remote_port);
+                    msgb_free(m3ua_msg);
+                }
+            } else if (send_udp) {
+                std::cerr << COLOR_YELLOW << "⚠ ISUP-interface: remote_ip не задан\n" << COLOR_RESET;
+            }
+            msgb_free(isup_msg);
+        }
+    }
+
+    // ── P19: ISUP GRA (Group Reset Acknowledgement) ──────────────────────────
+    if (do_isup_gra) {
+        print_section_header("[ISUP GRA]", "ISUP-interface  (Group Reset Acknowledgement, MT=0x29)");
+        std::cout << "\n";
+        uint32_t isup_opc = (isup_m3ua_ni == 0) ? isup_opc_ni0 : isup_opc_ni2;
+        uint32_t isup_dpc = (isup_m3ua_ni == 0) ? isup_dpc_ni0 : isup_dpc_ni2;
+        struct msgb *isup_msg = generate_isup_gra(cic_param, grs_range_param);
+        if (isup_msg) {
+            if (send_udp && !isup_remote_ip.empty()) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(isup_msg, isup_opc, isup_dpc,
+                                                     isup_m3ua_ni, isup_si, mp,
+                                                     (uint8_t)(cic_param & 0xFF));
+                if (m3ua_msg) {
+                    send_message_udp(m3ua_msg->data, m3ua_msg->len,
+                                     isup_remote_ip.c_str(), isup_remote_port);
+                    msgb_free(m3ua_msg);
+                }
+            } else if (send_udp) {
+                std::cerr << COLOR_YELLOW << "⚠ ISUP-interface: remote_ip не задан\n" << COLOR_RESET;
+            }
+            msgb_free(isup_msg);
+        }
+    }
+
+    // ── P19: M3UA ASPDN-ACK ───────────────────────────────────────────────────
+    if (do_m3ua_aspdn_ack) {
+        print_section_header("[M3UA ASPDN-ACK]", "M3UA ASPSM  (ASP Down Ack, Class=3 Type=5)");
+        std::cout << "\n";
+        struct msgb *asp_msg = generate_m3ua_aspdn_ack();
+        if (asp_msg) {
+            if (send_udp && !remote_ip.empty())
+                send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
+            else if (send_udp)
+                std::cerr << COLOR_YELLOW << "⚠ M3UA: remote_ip не задан\n" << COLOR_RESET;
+            msgb_free(asp_msg);
+        }
+    }
+
+    // ── P19: M3UA ASPIA-ACK ───────────────────────────────────────────────────
+    if (do_m3ua_aspia_ack) {
+        print_section_header("[M3UA ASPIA-ACK]", "M3UA ASPTM  (ASP Inactive Ack, Class=4 Type=4)");
+        std::cout << "\n";
+        struct msgb *asp_msg = generate_m3ua_aspia_ack();
+        if (asp_msg) {
+            if (send_udp && !remote_ip.empty())
+                send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
+            else if (send_udp)
+                std::cerr << COLOR_YELLOW << "⚠ M3UA: remote_ip не задан\n" << COLOR_RESET;
+            msgb_free(asp_msg);
+        }
+    }
+
+    // ── P19: M3UA BEAT ────────────────────────────────────────────────────────
+    if (do_m3ua_beat) {
+        print_section_header("[M3UA BEAT]", "M3UA ASPSM  (Heartbeat, Class=3 Type=3)");
+        std::cout << "\n";
+        struct msgb *asp_msg = generate_m3ua_beat();
+        if (asp_msg) {
+            if (send_udp && !remote_ip.empty())
+                send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
+            else if (send_udp)
+                std::cerr << COLOR_YELLOW << "⚠ M3UA: remote_ip не задан\n" << COLOR_RESET;
+            msgb_free(asp_msg);
+        }
+    }
+
+    // ── P19: M3UA BEAT-ACK ────────────────────────────────────────────────────
+    if (do_m3ua_beat_ack) {
+        print_section_header("[M3UA BEAT-ACK]", "M3UA ASPSM  (Heartbeat Ack, Class=3 Type=6)");
+        std::cout << "\n";
+        struct msgb *asp_msg = generate_m3ua_beat_ack();
+        if (asp_msg) {
+            if (send_udp && !remote_ip.empty())
+                send_message_udp(asp_msg->data, asp_msg->len, remote_ip.c_str(), remote_port);
+            else if (send_udp)
+                std::cerr << COLOR_YELLOW << "⚠ M3UA: remote_ip не задан\n" << COLOR_RESET;
             msgb_free(asp_msg);
         }
     }
