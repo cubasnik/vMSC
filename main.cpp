@@ -92,6 +92,40 @@ struct CicEntry {
     }
 };
 
+// ── Аварийная система ────────────────────────────────────────────────────
+enum class AlarmSev : uint8_t {
+    CRITICAL = 0,  // немедленное устранение
+    MAJOR    = 1,  // серьёзное нарушение
+    MINOR    = 2,  // частичное нарушение
+    WARNING  = 3,  // предупреждение
+};
+
+struct AlarmEntry {
+    AlarmSev    severity  = AlarmSev::WARNING;
+    std::string object;    // источник: "CIC_5", "VLR", "A-interface"
+    std::string cause;     // причина
+    std::string detail;    // подробность
+
+    static const char *sev_str(AlarmSev s) {
+        switch (s) {
+            case AlarmSev::CRITICAL: return "CRITICAL";
+            case AlarmSev::MAJOR:    return "MAJOR";
+            case AlarmSev::MINOR:    return "MINOR";
+            case AlarmSev::WARNING:  return "WARNING";
+        }
+        return "?";
+    }
+    static const char *sev_color(AlarmSev s) {
+        switch (s) {
+            case AlarmSev::CRITICAL: return "\033[1;31m";  // bright red
+            case AlarmSev::MAJOR:    return "\033[0;31m";  // red
+            case AlarmSev::MINOR:    return "\033[0;33m";  // yellow
+            case AlarmSev::WARNING:  return "\033[0;36m";  // cyan
+        }
+        return "";
+    }
+};
+
 struct GtRoute {
     std::string prefix;       // E.164-префикс (например: 7916)
     std::string iface;        // интерфейс: a, c, f, e, nc, isup, gs
@@ -12639,6 +12673,7 @@ int main(int argc, char** argv) {
     bool cic_active_flag     = false;  // --cic-active
     bool cic_clear_flag      = false;  // --cic-clear
     uint16_t cic_op_target   = 0;      // CIC для операции (0 = все/по умолч.)
+    bool show_alarms         = false;  // --show-alarms
 
     // Простой парсинг аргументов
     for (int i = 1; i < argc; ++i) {
@@ -12946,6 +12981,10 @@ int main(int argc, char** argv) {
         }
         else if (arg == "--cic-clear") {
             cic_clear_flag = true;
+            do_lu = false; do_paging = false;
+        }
+        else if (arg == "--show-alarms") {
+            show_alarms = true;
             do_lu = false; do_paging = false;
         }
         // ── C-интерфейс: MAP over SCCP UDT ──────────────────────────
@@ -14932,6 +14971,160 @@ int main(int argc, char** argv) {
             }
             std::cout << "\n";
         }
+    }
+
+    // ── ALARMS: автоматическая диагностика ───────────────────────────────
+    if (show_alarms) {
+        std::vector<AlarmEntry> alarms;
+
+        // ─ CIC: заблокированные / зависшие в RSC ──────────────────────────
+        {
+            // Загрузим CIC-таблицу из файла для проверки
+            auto cic_path2 = [&]() -> std::string {
+                if (!config_path.empty()) {
+                    std::string base = config_path;
+                    size_t sl = base.find_last_of("/\\");
+                    if (sl != std::string::npos) base = base.substr(0, sl + 1); else base = "./";
+                    return base + "vmsc_cic.conf";
+                }
+                return "./vmsc_cic.conf";
+            }();
+            std::vector<CicEntry> ct;
+            std::ifstream cf(cic_path2);
+            if (cf.is_open()) {
+                std::string ln; CicEntry e; bool in_e = false;
+                while (std::getline(cf, ln)) {
+                    ln.erase(0, ln.find_first_not_of(" \t\r\n"));
+                    if (ln.empty() || ln[0]=='#') continue;
+                    if (ln[0]=='[') { if (in_e && e.cic) ct.push_back(e); e=CicEntry{}; in_e=true; continue; }
+                    size_t eq=ln.find('='); if (eq==std::string::npos) continue;
+                    std::string k=ln.substr(0,eq), v=ln.substr(eq+1);
+                    k.erase(0,k.find_first_not_of(" \t")); k.erase(k.find_last_not_of(" \t")+1);
+                    v.erase(0,v.find_first_not_of(" \t")); v.erase(v.find_last_not_of(" \t")+1);
+                    if (k=="cic") { try { e.cic=(uint16_t)std::stoul(v); } catch(...){} }
+                    else if (k=="state") { e.state=(v=="ACTIVE") ? CicState::ACTIVE : (v=="BLOCKED") ? CicState::BLOCKED : (v=="RESET") ? CicState::RESETTING : CicState::IDLE; }
+                }
+                if (in_e && e.cic) ct.push_back(e);
+            }
+            int n_blk=0, n_rst=0, n_active=0;
+            for (const auto &e : ct) {
+                if (e.state==CicState::BLOCKED)   { ++n_blk;
+                    alarms.push_back({AlarmSev::MAJOR, "CIC_"+std::to_string(e.cic), "circuitBlocked", "ISUP BLO не снят"});
+                }
+                if (e.state==CicState::RESETTING) { ++n_rst;
+                    alarms.push_back({AlarmSev::MINOR, "CIC_"+std::to_string(e.cic), "circuitResetting", "ISUP RSC в процессе"});
+                }
+                if (e.state==CicState::ACTIVE)    ++n_active;
+            }
+            int total = (int)ct.size();
+            if (total > 0) {
+                int n_idle = total - n_blk - n_rst - n_active;
+                if (n_idle == 0 && n_blk + n_active > 0)
+                    alarms.push_back({AlarmSev::CRITICAL, "CIC-pool", "allCircuitsBusy", "0 свободных CIC ("+std::to_string(total)+"/"+std::to_string(total)+" занято/заблок)"})
+                ;
+                else if (total > 0 && (n_blk + n_rst) * 100 / total >= 30)
+                    alarms.push_back({AlarmSev::MAJOR, "CIC-pool", "highBlockedRatio",
+                        std::to_string(n_blk+n_rst)+"/"+std::to_string(total)+" каналов заблок/ресет (более 30%)"})
+                ;
+                else if (total > 0 && n_active * 100 / total >= 80)
+                    alarms.push_back({AlarmSev::WARNING, "CIC-pool", "highOccupancy",
+                        std::to_string(n_active)+"/"+std::to_string(total)+" каналов занято (более 80%)"})
+                ;
+            }
+        }
+
+        // ─ VLR: нет зарегистрированных абонентов ─────────────────────────
+        {
+            auto vlr_path2 = [&]() -> std::string {
+                if (!config_path.empty()) {
+                    std::string base = config_path;
+                    size_t sl = base.find_last_of("/\\");
+                    if (sl != std::string::npos) base = base.substr(0, sl+1); else base="./";
+                    return base + "vmsc_vlr.conf";
+                }
+                return "./vmsc_vlr.conf";
+            }();
+            int n_reg = 0, n_total = 0;
+            std::ifstream vf(vlr_path2);
+            if (vf.is_open()) {
+                std::string ln; std::string cur_state;
+                while (std::getline(vf, ln)) {
+                    ln.erase(0, ln.find_first_not_of(" \t\r\n"));
+                    size_t eq = ln.find('='); if (eq == std::string::npos) continue;
+                    std::string k=ln.substr(0,eq), v=ln.substr(eq+1);
+                    k.erase(0,k.find_first_not_of(" \t")); k.erase(k.find_last_not_of(" \t")+1);
+                    v.erase(0,v.find_first_not_of(" \t")); v.erase(v.find_last_not_of(" \t")+1);
+                    if (k == "imsi") ++n_total;
+                    else if (k == "state") { if (v == "REG") ++n_reg; }
+                }
+            }
+            if (n_total > 0 && n_reg == 0)
+                alarms.push_back({AlarmSev::MAJOR, "VLR", "noRegisteredSubscribers",
+                    "все " + std::to_string(n_total) + " аб. в сост. DEREG/PAGING"});
+            else if (n_total == 0)
+                alarms.push_back({AlarmSev::WARNING, "VLR", "vlrTableEmpty",
+                    "таблица пуста (запустите --vlr-register)"});
+        }
+
+        // ─ Интерфейсы: нет адреса удалённой стороны ────────────────────
+        struct { const char *name; const std::string &ip; } ifaces[] = {
+            {"A-interface",    cfg.remote_ip},
+            {"C-interface",    cfg.c_remote_ip},
+            {"F-interface",    cfg.f_remote_ip},
+            {"E-interface",    cfg.e_remote_ip},
+            {"Gs-interface",   cfg.gs_remote_ip},
+        };
+        for (const auto &ifc : ifaces) {
+            if (ifc.ip.empty())
+                alarms.push_back({AlarmSev::MAJOR, ifc.name, "remoteIpNotConfigured",
+                    "remote_ip не задан в vmsc_interfaces.conf"});
+        }
+
+        // ─ MAP PRN: MSRN пул не настроен ─────────────────────────────────
+        if (cfg.msrn_prefix.empty())
+            alarms.push_back({AlarmSev::WARNING, "VLR/MSRN", "msrnPoolNotConfigured",
+                "msrn_prefix не задан в [vlr] vmsc.conf"});
+
+        // ── Вывод ──────────────────────────────────────────────────────────
+        print_section_header("[ALARMS]", "Активные аварии");
+        if (alarms.empty()) {
+            std::cout << "  " << COLOR_GREEN << "✔ Аварий нет  (система работает в нормальном режиме)\n" << COLOR_RESET;
+        } else {
+            // Сорт по серьёзности
+            std::sort(alarms.begin(), alarms.end(),
+                [](const AlarmEntry &a, const AlarmEntry &b){ return (int)a.severity < (int)b.severity; });
+
+            auto padR = [](const std::string &s, int w) -> std::string {
+                return s.size() < (size_t)w ? s + std::string(w-s.size(),' ') : s.substr(0,w);
+            };
+            std::cout << "  " << COLOR_CYAN
+                      << padR("SEV",10) << padR("ОБЪЕКТ",20) << padR("ПРИЧИНА",30) << "ПОДРОБНОСТЬ"
+                      << COLOR_RESET << "\n";
+            std::cout << "  " << std::string(82, '-') << "\n";
+            int crit=0,maj=0,min=0,warn=0;
+            for (const auto &a : alarms) {
+                const char *col = AlarmEntry::sev_color(a.severity);
+                std::cout << "  " << col
+                          << padR(AlarmEntry::sev_str(a.severity), 10)
+                          << COLOR_RESET
+                          << padR(a.object,  20)
+                          << padR(a.cause,   30)
+                          << a.detail << "\n";
+                switch (a.severity) {
+                    case AlarmSev::CRITICAL: ++crit; break;
+                    case AlarmSev::MAJOR:    ++maj;  break;
+                    case AlarmSev::MINOR:    ++min;  break;
+                    case AlarmSev::WARNING:  ++warn; break;
+                }
+            }
+            std::cout << "\n  Итого: " << alarms.size() << " аварий";
+            if (crit)  std::cout << "  " << AlarmEntry::sev_color(AlarmSev::CRITICAL) << crit << " CRITICAL" << COLOR_RESET;
+            if (maj)   std::cout << "  " << AlarmEntry::sev_color(AlarmSev::MAJOR)    << maj  << " MAJOR"    << COLOR_RESET;
+            if (min)   std::cout << "  " << AlarmEntry::sev_color(AlarmSev::MINOR)    << min  << " MINOR"    << COLOR_RESET;
+            if (warn)  std::cout << "  " << AlarmEntry::sev_color(AlarmSev::WARNING)  << warn << " WARNING"  << COLOR_RESET;
+            std::cout << "\n";
+        }
+        std::cout << "\n";
     }
 
     if (show_encapsulation || (show_all && send_udp)) {
