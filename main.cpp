@@ -3024,6 +3024,108 @@ static struct msgb *generate_map_send_group_call_end_signal(const char *imsi_str
     std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
     return msg;
 }
+// P35-MAP generators ─────────────────────────────────────────────────
+
+// P35-MAP-1: MAP SendRoutingInfo-SM  opCode=45  shortMsgRelayContext-v3
+static struct msgb *generate_map_send_routeing_info_for_sm(const char *msisdn_str) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "MAP SRI_SM");
+    if (!msg) return nullptr;
+    size_t slen = strlen(msisdn_str);
+    uint8_t bcd[9]; memset(bcd, 0, sizeof(bcd));
+    bcd[0] = (uint8_t)(((msisdn_str[0]-'0') << 4) | 0x09);
+    size_t blen = 1;
+    for (size_t i = 1; i < slen && blen < 9; i += 2) {
+        uint8_t lo = (uint8_t)(msisdn_str[i]-'0');
+        uint8_t hi = (i+1 < slen) ? (uint8_t)(msisdn_str[i+1]-'0') : 0x0F;
+        bcd[blen++] = (uint8_t)((hi << 4) | lo);
+    }
+    uint8_t msisdn_ie[12]; uint8_t ml = (uint8_t)ber_tlv(msisdn_ie, 0x04, bcd, (uint8_t)blen);
+    uint8_t seq[20]; uint8_t sq = (uint8_t)ber_tlv(seq, 0x30, msisdn_ie, ml);
+    uint8_t oid[] = { 0x04, 0x00, 0x00, 0x01, 0x00, 0x14, 0x03 };  // shortMsgRelayContext-v3
+    static uint32_t tid = 0x00003200;
+    uint8_t pdu[256]; uint8_t pl = build_tcap_begin(pdu, tid++, oid, sizeof(oid), 0x01, 0x2D, seq, sq);
+    memcpy(msgb_put(msg, pl), pdu, pl);
+    std::cout << COLOR_CYAN << "\u2713 MAP SendRoutingInfo-SM" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  opCode=45  MSISDN: " << COLOR_GREEN << msisdn_str << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// P35-MAP-2: MAP SetReportingState  opCode=73  locationSvcEnquiryContext-v3
+static struct msgb *generate_map_set_reporting_state(const char *imsi_str) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "MAP SET_REP");
+    if (!msg) return nullptr;
+    size_t imsi_slen = strlen(imsi_str);
+    uint8_t bcd_imsi[9]; memset(bcd_imsi, 0, sizeof(bcd_imsi));
+    bcd_imsi[0] = (uint8_t)(((imsi_str[0]-'0') << 4) | 0x09);
+    size_t bcd_len = 1;
+    for (size_t i = 1; i < imsi_slen && bcd_len < 9; i += 2) {
+        uint8_t lo = (uint8_t)(imsi_str[i]-'0');
+        uint8_t hi = (i+1 < imsi_slen) ? (uint8_t)(imsi_str[i+1]-'0') : 0x0F;
+        bcd_imsi[bcd_len++] = (uint8_t)((hi << 4) | lo);
+    }
+    uint8_t imsi_ie[12]; uint8_t imsi_ie_len = (uint8_t)ber_tlv(imsi_ie, 0x04, bcd_imsi, (uint8_t)bcd_len);
+    uint8_t seq[20]; uint8_t sq = (uint8_t)ber_tlv(seq, 0x30, imsi_ie, imsi_ie_len);
+    uint8_t oid[] = { 0x04, 0x00, 0x00, 0x01, 0x00, 0x23, 0x03 };  // locationSvcEnquiryContext-v3
+    static uint32_t tid = 0x00003300;
+    uint8_t pdu[256]; uint8_t pl = build_tcap_begin(pdu, tid++, oid, sizeof(oid), 0x01, 0x49, seq, sq);
+    memcpy(msgb_put(msg, pl), pdu, pl);
+    std::cout << COLOR_CYAN << "\u2713 MAP SetReportingState" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  opCode=73  IMSI: " << COLOR_GREEN << imsi_str << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// P35-MAP-3: MAP StatusReport  opCode=74  locationSvcEnquiryContext-v3
+static struct msgb *generate_map_status_report(const char *imsi_str) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "MAP STAT_REP");
+    if (!msg) return nullptr;
+    size_t imsi_slen = strlen(imsi_str);
+    uint8_t bcd_imsi[9]; memset(bcd_imsi, 0, sizeof(bcd_imsi));
+    bcd_imsi[0] = (uint8_t)(((imsi_str[0]-'0') << 4) | 0x09);
+    size_t bcd_len = 1;
+    for (size_t i = 1; i < imsi_slen && bcd_len < 9; i += 2) {
+        uint8_t lo = (uint8_t)(imsi_str[i]-'0');
+        uint8_t hi = (i+1 < imsi_slen) ? (uint8_t)(imsi_str[i+1]-'0') : 0x0F;
+        bcd_imsi[bcd_len++] = (uint8_t)((hi << 4) | lo);
+    }
+    uint8_t imsi_ie[12]; uint8_t imsi_ie_len = (uint8_t)ber_tlv(imsi_ie, 0x04, bcd_imsi, (uint8_t)bcd_len);
+    uint8_t seq[20]; uint8_t sq = (uint8_t)ber_tlv(seq, 0x30, imsi_ie, imsi_ie_len);
+    uint8_t oid[] = { 0x04, 0x00, 0x00, 0x01, 0x00, 0x23, 0x03 };  // locationSvcEnquiryContext-v3
+    static uint32_t tid = 0x00003400;
+    uint8_t pdu[256]; uint8_t pl = build_tcap_begin(pdu, tid++, oid, sizeof(oid), 0x01, 0x4A, seq, sq);
+    memcpy(msgb_put(msg, pl), pdu, pl);
+    std::cout << COLOR_CYAN << "\u2713 MAP StatusReport" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  opCode=74  IMSI: " << COLOR_GREEN << imsi_str << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// P35-MAP-4: MAP PrepareHandover-Res  opCode=68  handoverControlContext-v3
+static struct msgb *generate_map_prepare_handover_res(const char *imsi_str) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "MAP PREP_HO_R");
+    if (!msg) return nullptr;
+    size_t imsi_slen = strlen(imsi_str);
+    uint8_t bcd_imsi[9]; memset(bcd_imsi, 0, sizeof(bcd_imsi));
+    bcd_imsi[0] = (uint8_t)(((imsi_str[0]-'0') << 4) | 0x09);
+    size_t bcd_len = 1;
+    for (size_t i = 1; i < imsi_slen && bcd_len < 9; i += 2) {
+        uint8_t lo = (uint8_t)(imsi_str[i]-'0');
+        uint8_t hi = (i+1 < imsi_slen) ? (uint8_t)(imsi_str[i+1]-'0') : 0x0F;
+        bcd_imsi[bcd_len++] = (uint8_t)((hi << 4) | lo);
+    }
+    uint8_t imsi_ie[12]; uint8_t imsi_ie_len = (uint8_t)ber_tlv(imsi_ie, 0x04, bcd_imsi, (uint8_t)bcd_len);
+    uint8_t seq[20]; uint8_t sq = (uint8_t)ber_tlv(seq, 0x30, imsi_ie, imsi_ie_len);
+    uint8_t oid[] = { 0x04, 0x00, 0x00, 0x01, 0x00, 0x09, 0x03 };  // handoverControlContext-v3
+    static uint32_t tid = 0x00003500;
+    uint8_t pdu[256]; uint8_t pl = build_tcap_begin(pdu, tid++, oid, sizeof(oid), 0x01, 0x44, seq, sq);
+    memcpy(msgb_put(msg, pl), pdu, pl);
+    std::cout << COLOR_CYAN << "\u2713 MAP PrepareHandover-Res" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  opCode=68  IMSI: " << COLOR_GREEN << imsi_str << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
 // ──────────────────────────────────────────────────────────────
 // BSSAP+ Location Update  — 3GPP TS 29.018 §9.2.1
 // Направление: SGSN → MSC  (Gs-interface)  — здесь симулируем MSC→SGSN
@@ -3467,6 +3569,63 @@ static struct msgb *generate_bssap_plus_service_request(const char *imsi_str, ui
               << COLOR_RESET << "  SvcType: " << COLOR_GREEN << (int)svc_type << COLOR_RESET << "  MsgType: 0x15\n\n";
     return msg;
 }
+
+// P35-BSSAP+ generators ──────────────────────────────────────────────
+
+// P35-GS-1: BSSAP+ Perform-Location-Request  MT=0x06  (LCS / Gs)
+static struct msgb *generate_bssap_plus_perform_location_request(const char *imsi_str) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSAP+ PLR");
+    if (!msg) return nullptr;
+    *(msgb_put(msg,1)) = 0x00; *(msgb_put(msg,1)) = 0x06;
+    uint8_t bcd[9]; uint8_t bl = bssap_encode_imsi(imsi_str, bcd);
+    uint8_t *ie = msgb_put(msg, 2+bl); ie[0]=0x01; ie[1]=bl; memcpy(ie+2, bcd, bl);
+    std::cout << COLOR_CYAN << "\u2713 BSSAP+ Perform-Location-Request" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  IMSI: " << COLOR_GREEN << imsi_str << COLOR_RESET << "  MsgType: 0x06\n\n";
+    return msg;
+}
+
+// P35-GS-2: BSSAP+ Perform-Location-Response  MT=0x07  (LCS / Gs)
+static struct msgb *generate_bssap_plus_perform_location_response(const char *imsi_str) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSAP+ PLS");
+    if (!msg) return nullptr;
+    *(msgb_put(msg,1)) = 0x00; *(msgb_put(msg,1)) = 0x07;
+    uint8_t bcd[9]; uint8_t bl = bssap_encode_imsi(imsi_str, bcd);
+    uint8_t *ie = msgb_put(msg, 2+bl); ie[0]=0x01; ie[1]=bl; memcpy(ie+2, bcd, bl);
+    // Location estimate IE (0x44): dummy 8 bytes (ellipsoid point)
+    uint8_t *loc = msgb_put(msg, 10); loc[0]=0x44; loc[1]=0x08; memset(loc+2,0,8);
+    std::cout << COLOR_CYAN << "\u2713 BSSAP+ Perform-Location-Response" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  IMSI: " << COLOR_GREEN << imsi_str << COLOR_RESET << "  MsgType: 0x07\n\n";
+    return msg;
+}
+
+// P35-GS-3: BSSAP+ Perform-Location-Abort  MT=0x08  (LCS / Gs)
+static struct msgb *generate_bssap_plus_perform_location_abort(const char *imsi_str) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSAP+ PLA");
+    if (!msg) return nullptr;
+    *(msgb_put(msg,1)) = 0x00; *(msgb_put(msg,1)) = 0x08;
+    uint8_t bcd[9]; uint8_t bl = bssap_encode_imsi(imsi_str, bcd);
+    uint8_t *ie = msgb_put(msg, 2+bl); ie[0]=0x01; ie[1]=bl; memcpy(ie+2, bcd, bl);
+    // LCS cause IE (0x3D): 1 byte cause = 0x00 (unspecified)
+    uint8_t *lcs = msgb_put(msg, 3); lcs[0]=0x3D; lcs[1]=0x01; lcs[2]=0x00;
+    std::cout << COLOR_CYAN << "\u2713 BSSAP+ Perform-Location-Abort" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  IMSI: " << COLOR_GREEN << imsi_str << COLOR_RESET << "  MsgType: 0x08\n\n";
+    return msg;
+}
+
+// P35-GS-4: BSSAP+ CN-Invoke-Trace  MT=0x14  (Trace activation / Gs)
+static struct msgb *generate_bssap_plus_cn_invoke_trace(const char *imsi_str) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSAP+ CIT");
+    if (!msg) return nullptr;
+    *(msgb_put(msg,1)) = 0x00; *(msgb_put(msg,1)) = 0x14;
+    uint8_t bcd[9]; uint8_t bl = bssap_encode_imsi(imsi_str, bcd);
+    uint8_t *ie = msgb_put(msg, 2+bl); ie[0]=0x01; ie[1]=bl; memcpy(ie+2, bcd, bl);
+    // Trace Reference IE (0x20): 2 bytes dummy
+    uint8_t *tr = msgb_put(msg, 4); tr[0]=0x20; tr[1]=0x02; tr[2]=0x00; tr[3]=0x01;
+    std::cout << COLOR_CYAN << "\u2713 BSSAP+ CN-Invoke-Trace" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  IMSI: " << COLOR_GREEN << imsi_str << COLOR_RESET << "  MsgType: 0x14\n\n";
+    return msg;
+}
+
 
 // ============================================================
 // ──────────────────────────────────────────────────────────────
@@ -4937,6 +5096,62 @@ static struct msgb *generate_isup_opr(uint16_t cic) {
     std::cout << COLOR_BLUE << "  MT=0x2D  CIC: " << COLOR_GREEN << cic << COLOR_RESET << "\n\n";
     return msg;
 }
+
+// P35-ISUP generators ─────────────────────────────────────────────────
+
+// P35-ISUP-1: ISUP ACL Automated Congestion Level  MT=0xE3  (ANSI T1.113)
+static struct msgb *generate_isup_acl(uint16_t cic) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "ISUP ACL");
+    if (!msg) return nullptr;
+    uint8_t *p = msgb_put(msg, 2); p[0]=(uint8_t)(cic&0xFF); p[1]=(uint8_t)(cic>>8);
+    *(msgb_put(msg,1)) = 0xE3;   // MT
+    // Congestion level IE: 1B mandatory fixed param
+    *(msgb_put(msg,1)) = 0x02;   // congestion level = 2 (moderate)
+    *(msgb_put(msg,1)) = 0x00;   // EOP
+    std::cout << COLOR_CYAN << "\u2713 ISUP Automated Congestion Level (ACL)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0xE3  CIC: " << COLOR_GREEN << cic << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// P35-ISUP-2: ISUP CVT Circuit Validation Test  MT=0xE4  (ANSI T1.113)
+static struct msgb *generate_isup_cvt(uint16_t cic) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "ISUP CVT");
+    if (!msg) return nullptr;
+    uint8_t *p = msgb_put(msg, 2); p[0]=(uint8_t)(cic&0xFF); p[1]=(uint8_t)(cic>>8);
+    *(msgb_put(msg,1)) = 0xE4;   // MT
+    *(msgb_put(msg,1)) = 0x00;   // EOP
+    std::cout << COLOR_CYAN << "\u2713 ISUP Circuit Validation Test (CVT)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0xE4  CIC: " << COLOR_GREEN << cic << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// P35-ISUP-3: ISUP CVR Circuit Validation Response  MT=0xE5  (ANSI T1.113)
+static struct msgb *generate_isup_cvr(uint16_t cic) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "ISUP CVR");
+    if (!msg) return nullptr;
+    uint8_t *p = msgb_put(msg, 2); p[0]=(uint8_t)(cic&0xFF); p[1]=(uint8_t)(cic>>8);
+    *(msgb_put(msg,1)) = 0xE5;   // MT
+    // Circuit validity response IE: 1B
+    *(msgb_put(msg,1)) = 0x01;   // pointer to optional params
+    *(msgb_put(msg,1)) = 0x02;   // CVR Response Ind: 1B = valid
+    *(msgb_put(msg,1)) = 0x00;   // EOP
+    std::cout << COLOR_CYAN << "\u2713 ISUP Circuit Validation Response (CVR)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0xE5  CIC: " << COLOR_GREEN << cic << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// P35-ISUP-4: ISUP CGSC Circuit Group Supervision Control  MT=0x1D
+static struct msgb *generate_isup_cgsc(uint16_t cic) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "ISUP CGSC");
+    if (!msg) return nullptr;
+    uint8_t *p = msgb_put(msg, 2); p[0]=(uint8_t)(cic&0xFF); p[1]=(uint8_t)(cic>>8);
+    *(msgb_put(msg,1)) = 0x1D;   // MT
+    *(msgb_put(msg,1)) = 0x00;   // EOP
+    std::cout << COLOR_CYAN << "\u2713 ISUP Circuit Group Supervision Control (CGSC)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x1D  CIC: " << COLOR_GREEN << cic << COLOR_RESET << "\n\n";
+    return msg;
+}
+
 
 // ──────────────────────────────────────────────────────────────
 // P16: ISUP BLO — Blocking (ITU-T Q.763 §3.4)
@@ -9000,6 +9215,58 @@ static struct msgb *generate_dtap_rr_synchronisation_channel_info(void) {
     return msg;
 }
 
+// P35-RR generators ───────────────────────────────────────────────────
+
+// P35-RR-1: RR System Information Type 3  MT=0x1B  (3GPP TS 44.018 §9.1.35)
+static struct msgb *generate_dtap_rr_system_information_type3(void) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP RR SI3");
+    if (!msg) return nullptr;
+    uint8_t *p = msgb_put(msg, 2); p[0]=0x06; p[1]=0x1B;
+    // Cell Identity (2B) + LAI (5B) + Control Channel Desc (3B) + Cell Options (1B)
+    // + Cell Selection Params (2B) + RACH Control (3B) = 16B content
+    memset(msgb_put(msg, 16), 0x00, 16);
+    std::cout << COLOR_CYAN << "\u2713 DTAP RR System Information Type 3" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x1B  18 bytes" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// P35-RR-2: RR System Information Type 4  MT=0x1C  (3GPP TS 44.018 §9.1.36)
+static struct msgb *generate_dtap_rr_system_information_type4(void) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP RR SI4");
+    if (!msg) return nullptr;
+    uint8_t *p = msgb_put(msg, 2); p[0]=0x06; p[1]=0x1C;
+    // LAI (5B) + Cell Selection Params (2B) + RACH Control (3B) = 10B
+    memset(msgb_put(msg, 10), 0x00, 10);
+    std::cout << COLOR_CYAN << "\u2713 DTAP RR System Information Type 4" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x1C  12 bytes" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// P35-RR-3: RR System Information Type 5  MT=0x1D  (3GPP TS 44.018 §9.1.37)
+static struct msgb *generate_dtap_rr_system_information_type5(void) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP RR SI5");
+    if (!msg) return nullptr;
+    uint8_t *p = msgb_put(msg, 2); p[0]=0x06; p[1]=0x1D;
+    // BCCH Frequency List (16B) — neighbour cell ARFCN bitmap
+    memset(msgb_put(msg, 16), 0x00, 16);
+    std::cout << COLOR_CYAN << "\u2713 DTAP RR System Information Type 5" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x1D  18 bytes" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// P35-RR-4: RR System Information Type 6  MT=0x1E  (3GPP TS 44.018 §9.1.38)
+static struct msgb *generate_dtap_rr_system_information_type6(void) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "DTAP RR SI6");
+    if (!msg) return nullptr;
+    uint8_t *p = msgb_put(msg, 2); p[0]=0x06; p[1]=0x1E;
+    // Cell Identity (2B) + LAI (5B) + Cell Options-SACCH (1B) + NCC Permitted (1B)
+    memset(msgb_put(msg, 9), 0x00, 9);
+    std::cout << COLOR_CYAN << "\u2713 DTAP RR System Information Type 6" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT=0x1E  11 bytes" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+
 // ============================================================
 // P9: A-interface DTAP CC / MM — вызов (Call Control)
 // ============================================================
@@ -9931,6 +10198,10 @@ int main(int argc, char** argv) {
     bool do_map_cancel_location_gprs             = false; // MAP CL-GPRS    opCode=3
     bool do_map_note_subscriber_data_modified    = false; // MAP NSDM       opCode=5
     bool do_map_send_group_call_end_signal       = false; // MAP SGCES      opCode=13
+    bool do_map_send_routeing_info_for_sm        = false; // MAP SRIFSM     opCode=45
+    bool do_map_set_reporting_state              = false; // MAP SRS        opCode=73
+    bool do_map_status_report                    = false; // MAP StatRep    opCode=74
+    bool do_map_prepare_handover_res             = false; // MAP PrepHO-Res opCode=68
     std::string ussd_string_param                 = "*100#"; // --ussd-string
     uint8_t  equip_status_param         = 0;     // --equip-status: 0=white 1=black 2=grey
     bool do_gs_paging        = false;  // BSSAP+ MS-Paging-Request   0x09
@@ -9959,6 +10230,10 @@ int main(int argc, char** argv) {
     bool do_gs_location_update_reject  = false; // BSSAP+ Location-Update-Reject  MT=0x03
     bool do_gs_paging_reject           = false; // BSSAP+ Paging-Reject            MT=0x0A
     bool do_gs_service_request         = false; // BSSAP+ Service-Request          MT=0x15
+    bool do_gs_perform_location_req    = false; // BSSAP+ Perform-Location-Request MT=0x06
+    bool do_gs_perform_location_res    = false; // BSSAP+ Perform-Location-Response MT=0x07
+    bool do_gs_perform_location_abort  = false; // BSSAP+ Perform-Location-Abort   MT=0x08
+    bool do_gs_cn_invoke_trace         = false; // BSSAP+ CN-Invoke-Trace          MT=0x14
     uint8_t  gs_gprs_detach_type         = 0;     // --gs-gprs-detach-type
     // TCAP диалог: завершение и промежуточные шаги
     bool do_tcap_end         = false;  // TCAP End (ack, нет компонентов)     (C-interface)
@@ -10053,6 +10328,10 @@ int main(int argc, char** argv) {
     bool     do_isup_scf   = false; // ISUP SCF Subsequent Call Fwd   MT=0x39
     bool     do_isup_sdt   = false; // ISUP SDT Subsequent Dir Num    MT=0x3A
     bool     do_isup_opr   = false; // ISUP OPR Overload              MT=0x2D
+    bool     do_isup_acl   = false; // ISUP ACL Automated Congestion  MT=0xE3
+    bool     do_isup_cvt   = false; // ISUP CVT Circuit Val Test      MT=0xE4
+    bool     do_isup_cvr   = false; // ISUP CVR Circuit Val Response  MT=0xE5
+    bool     do_isup_cgsc  = false; // ISUP CGSC Ckt Grp Sup Control  MT=0x1D
     // P16: ISUP Circuit Management (ITU-T Q.763)
     bool     do_isup_blo  = false;     // ISUP BLO Blocking           MT=0x13  (ISUP-interface)
     bool     do_isup_ubl  = false;     // ISUP UBL Unblocking         MT=0x14  (ISUP-interface)
@@ -10282,6 +10561,10 @@ int main(int argc, char** argv) {
     bool     do_dtap_rr_talker_indication          = false; // RR Talker Indication     MT=0x19
     bool     do_dtap_rr_vgcs_uplink_grant          = false; // RR VGCS Uplink Grant     MT=0x09
     bool     do_dtap_rr_synchronisation_chan_info  = false; // RR Synch Channel Info    MT=0x3B
+    bool     do_dtap_rr_si_type3                   = false; // RR SI Type 3             MT=0x1B
+    bool     do_dtap_rr_si_type4                   = false; // RR SI Type 4             MT=0x1C
+    bool     do_dtap_rr_si_type5                   = false; // RR SI Type 5             MT=0x1D
+    bool     do_dtap_rr_si_type6                   = false; // RR SI Type 6             MT=0x1E
     uint8_t  rr_ta_param                             = 0;     // --ta (Timing Advance 0-63)
     uint8_t  rr_cipher_alg_param                  = 1;     // --cipher-alg (1=A5/1, 2=A5/2)
     uint8_t  rr_rxlev_param                   = 30;    // --rxlev (0-63)
@@ -10788,6 +11071,10 @@ int main(int argc, char** argv) {
         else if (arg == "--send-map-cancel-location-gprs")           { do_map_cancel_location_gprs          = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-map-note-subscriber-data-modified")  { do_map_note_subscriber_data_modified  = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-map-send-group-call-end-signal")     { do_map_send_group_call_end_signal     = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-map-srifsm")                         { do_map_send_routeing_info_for_sm      = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-map-set-reporting-state")            { do_map_set_reporting_state            = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-map-status-report")                  { do_map_status_report                  = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-map-prepare-ho-res")                 { do_map_prepare_handover_res           = true; do_lu = false; do_paging = false; }
         else if (arg == "--ussd-string") { if (i+1<argc) ussd_string_param = argv[++i]; }
         else if (arg == "--equip-status") { if (i+1<argc) equip_status_param = (uint8_t)std::stoul(argv[++i],nullptr,0); }
         else if (arg == "--msisdn")                           { if (i+1<argc) msisdn_param = argv[++i]; }
@@ -10846,6 +11133,10 @@ int main(int argc, char** argv) {
         else if (arg == "--send-gs-location-update-reject") { do_gs_location_update_reject = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-gs-paging-reject")          { do_gs_paging_reject          = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-gs-service-request")        { do_gs_service_request        = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-gs-perform-location-req")   { do_gs_perform_location_req   = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-gs-perform-location-res")   { do_gs_perform_location_res   = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-gs-perform-location-abort") { do_gs_perform_location_abort = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-gs-cn-invoke-trace")        { do_gs_cn_invoke_trace        = true; do_lu = false; do_paging = false; }
         else if (arg == "--gs-gprs-detach-type" && i+1 < argc) gs_gprs_detach_type = (uint8_t)std::stoul(argv[++i],nullptr,0);
         // ── TCAP диалог: завершение и промежуточные шаги ────────────
         else if (arg == "--dtid" && i+1 < argc) {
@@ -11106,7 +11397,11 @@ int main(int argc, char** argv) {
         else if (arg == "--send-isup-ran") { do_isup_ran = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-isup-scf") { do_isup_scf = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-isup-sdt") { do_isup_sdt = true; do_lu = false; do_paging = false; }
-        else if (arg == "--send-isup-opr") { do_isup_opr = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-isup-opr")  { do_isup_opr  = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-isup-acl")  { do_isup_acl  = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-isup-cvt")  { do_isup_cvt  = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-isup-cvr")  { do_isup_cvr  = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-isup-cgsc") { do_isup_cgsc = true; do_lu = false; do_paging = false; }
         else if (arg == "--cfn-cause")     { if (i+1<argc) cfn_cause_param = (uint8_t)std::stoul(argv[++i],nullptr,0); }
         else if (arg == "--cot-success")   { cot_success_param = true; }
         else if (arg == "--cot-fail")      { cot_success_param = false; }
@@ -11487,6 +11782,10 @@ int main(int argc, char** argv) {
         else if (arg == "--send-dtap-rr-talker-indication")         { do_dtap_rr_talker_indication         = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-dtap-rr-vgcs-uplink-grant")         { do_dtap_rr_vgcs_uplink_grant         = true; do_lu = false; do_paging = false; }
         else if (arg == "--send-dtap-rr-synchronisation-chan-info")  { do_dtap_rr_synchronisation_chan_info  = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-dtap-rr-si3")  { do_dtap_rr_si_type3 = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-dtap-rr-si4")  { do_dtap_rr_si_type4 = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-dtap-rr-si5")  { do_dtap_rr_si_type5 = true; do_lu = false; do_paging = false; }
+        else if (arg == "--send-dtap-rr-si6")  { do_dtap_rr_si_type6 = true; do_lu = false; do_paging = false; }
         else if (arg == "--ta") { if (i+1<argc) rr_ta_param = (uint8_t)std::stoul(argv[++i],nullptr,0); }
         else if (arg == "--cipher-alg") { if (i+1<argc) rr_cipher_alg_param = (uint8_t)std::stoul(argv[++i],nullptr,0); }
         else if (arg == "--rxlev")     { if (i+1<argc) rr_rxlev_param     = (uint8_t)std::stoul(argv[++i],nullptr,0); }
@@ -13338,6 +13637,78 @@ int main(int argc, char** argv) {
             msgb_free(map_msg);
         }
     }
+    if (do_map_send_routeing_info_for_sm) {
+        print_section_header("[MAP SendRoutingInfo-SM]", "C-interface  GMSC \u2192 HLR  (opCode=45)");
+        std::cout << "\n";
+        struct msgb *map_msg = generate_map_send_routeing_info_for_sm(msisdn.c_str());
+        if (map_msg) {
+            if (send_udp && !c_remote_ip.empty()) {
+                ScpAddr c_called  { c_ssn_remote, c_gt_ind, gt_tt, gt_np, gt_nai, c_gt_called };
+                ScpAddr c_calling { c_ssn_local,  c_gt_ind, gt_tt, gt_np, gt_nai, msc_gt };
+                struct msgb *sccp_msg = wrap_in_sccp_udt(map_msg, c_called, c_calling);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, c_opc, c_dpc, c_m3ua_ni, c_si, mp, sls);
+                    if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, c_remote_ip.c_str(), c_remote_port); msgb_free(m3ua_msg); }
+                    msgb_free(sccp_msg);
+                }
+            } else if (send_udp) std::cerr << COLOR_YELLOW << "\u26a0 C-interface: remote_ip \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\n" << COLOR_RESET;
+            msgb_free(map_msg);
+        }
+    }
+    if (do_map_set_reporting_state) {
+        print_section_header("[MAP SetReportingState]", "C-interface  MSC \u2192 HLR  (opCode=73)");
+        std::cout << "\n";
+        struct msgb *map_msg = generate_map_set_reporting_state(imsi.c_str());
+        if (map_msg) {
+            if (send_udp && !c_remote_ip.empty()) {
+                ScpAddr c_called  { c_ssn_remote, c_gt_ind, gt_tt, gt_np, gt_nai, c_gt_called };
+                ScpAddr c_calling { c_ssn_local,  c_gt_ind, gt_tt, gt_np, gt_nai, msc_gt };
+                struct msgb *sccp_msg = wrap_in_sccp_udt(map_msg, c_called, c_calling);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, c_opc, c_dpc, c_m3ua_ni, c_si, mp, sls);
+                    if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, c_remote_ip.c_str(), c_remote_port); msgb_free(m3ua_msg); }
+                    msgb_free(sccp_msg);
+                }
+            } else if (send_udp) std::cerr << COLOR_YELLOW << "\u26a0 C-interface: remote_ip \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\n" << COLOR_RESET;
+            msgb_free(map_msg);
+        }
+    }
+    if (do_map_status_report) {
+        print_section_header("[MAP StatusReport]", "C-interface  SGSN \u2192 HLR  (opCode=74)");
+        std::cout << "\n";
+        struct msgb *map_msg = generate_map_status_report(imsi.c_str());
+        if (map_msg) {
+            if (send_udp && !c_remote_ip.empty()) {
+                ScpAddr c_called  { c_ssn_remote, c_gt_ind, gt_tt, gt_np, gt_nai, c_gt_called };
+                ScpAddr c_calling { c_ssn_local,  c_gt_ind, gt_tt, gt_np, gt_nai, msc_gt };
+                struct msgb *sccp_msg = wrap_in_sccp_udt(map_msg, c_called, c_calling);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, c_opc, c_dpc, c_m3ua_ni, c_si, mp, sls);
+                    if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, c_remote_ip.c_str(), c_remote_port); msgb_free(m3ua_msg); }
+                    msgb_free(sccp_msg);
+                }
+            } else if (send_udp) std::cerr << COLOR_YELLOW << "\u26a0 C-interface: remote_ip \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\n" << COLOR_RESET;
+            msgb_free(map_msg);
+        }
+    }
+    if (do_map_prepare_handover_res) {
+        print_section_header("[MAP PrepareHandover-Res]", "E-interface  MSC \u2192 MSC  (opCode=68)");
+        std::cout << "\n";
+        struct msgb *map_msg = generate_map_prepare_handover_res(imsi.c_str());
+        if (map_msg) {
+            if (send_udp && !c_remote_ip.empty()) {
+                ScpAddr c_called  { c_ssn_remote, c_gt_ind, gt_tt, gt_np, gt_nai, c_gt_called };
+                ScpAddr c_calling { c_ssn_local,  c_gt_ind, gt_tt, gt_np, gt_nai, msc_gt };
+                struct msgb *sccp_msg = wrap_in_sccp_udt(map_msg, c_called, c_calling);
+                if (sccp_msg) {
+                    struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, c_opc, c_dpc, c_m3ua_ni, c_si, mp, sls);
+                    if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, c_remote_ip.c_str(), c_remote_port); msgb_free(m3ua_msg); }
+                    msgb_free(sccp_msg);
+                }
+            } else if (send_udp) std::cerr << COLOR_YELLOW << "\u26a0 C-interface: remote_ip \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\n" << COLOR_RESET;
+            msgb_free(map_msg);
+        }
+    }
     if (do_map_note_ms_present_for_gprs) {
         print_section_header("[MAP NoteMsPresentForGPRS]", "Gs-interface  SGSN → HLR  (opCode=76)");
         std::cout << "\n";
@@ -13486,6 +13857,18 @@ int main(int argc, char** argv) {
     if (do_gs_service_request)
         send_gs(generate_bssap_plus_service_request(imsi.c_str(), gs_svc_type),
                 "[BSSAP+ Service-Request]", "Gs-interface  SGSN → MSC  (0x15)");
+    if (do_gs_perform_location_req)
+        send_gs(generate_bssap_plus_perform_location_request(imsi.c_str()),
+                "[BSSAP+ Perform-Location-Request]", "Gs-interface  MSC → SGSN  (0x06)");
+    if (do_gs_perform_location_res)
+        send_gs(generate_bssap_plus_perform_location_response(imsi.c_str()),
+                "[BSSAP+ Perform-Location-Response]", "Gs-interface  SGSN → MSC  (0x07)");
+    if (do_gs_perform_location_abort)
+        send_gs(generate_bssap_plus_perform_location_abort(imsi.c_str()),
+                "[BSSAP+ Perform-Location-Abort]", "Gs-interface  MSC → SGSN  (0x08)");
+    if (do_gs_cn_invoke_trace)
+        send_gs(generate_bssap_plus_cn_invoke_trace(imsi.c_str()),
+                "[BSSAP+ CN-Invoke-Trace]", "Gs-interface  MSC → SGSN  (0x14)");
 
     // ── MAP SendRoutingInfo (SRI) ─────────────────────────────────────────────
     if (do_map_sri) {
@@ -15091,6 +15474,50 @@ int main(int argc, char** argv) {
         print_section_header("[ISUP Overload (OPR)]", "ISUP-interface  MT=0x2D");
         std::cout << "\n";
         struct msgb *isup_msg = generate_isup_opr(cic_param);
+        if (isup_msg) {
+            if (send_udp) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(isup_msg, isup_opc_ni0, isup_dpc_ni0, isup_m3ua_ni, isup_si, mp, sls);
+                if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, isup_remote_ip.c_str(), isup_remote_port); msgb_free(m3ua_msg); }
+            } else msgb_free(isup_msg);
+        }
+    }
+    if (do_isup_acl) {
+        print_section_header("[ISUP Automated Congestion Level (ACL)]", "ISUP-interface  MT=0xE3");
+        std::cout << "\n";
+        struct msgb *isup_msg = generate_isup_acl(cic_param);
+        if (isup_msg) {
+            if (send_udp) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(isup_msg, isup_opc_ni0, isup_dpc_ni0, isup_m3ua_ni, isup_si, mp, sls);
+                if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, isup_remote_ip.c_str(), isup_remote_port); msgb_free(m3ua_msg); }
+            } else msgb_free(isup_msg);
+        }
+    }
+    if (do_isup_cvt) {
+        print_section_header("[ISUP Circuit Validation Test (CVT)]", "ISUP-interface  MT=0xE4");
+        std::cout << "\n";
+        struct msgb *isup_msg = generate_isup_cvt(cic_param);
+        if (isup_msg) {
+            if (send_udp) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(isup_msg, isup_opc_ni0, isup_dpc_ni0, isup_m3ua_ni, isup_si, mp, sls);
+                if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, isup_remote_ip.c_str(), isup_remote_port); msgb_free(m3ua_msg); }
+            } else msgb_free(isup_msg);
+        }
+    }
+    if (do_isup_cvr) {
+        print_section_header("[ISUP Circuit Validation Response (CVR)]", "ISUP-interface  MT=0xE5");
+        std::cout << "\n";
+        struct msgb *isup_msg = generate_isup_cvr(cic_param);
+        if (isup_msg) {
+            if (send_udp) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(isup_msg, isup_opc_ni0, isup_dpc_ni0, isup_m3ua_ni, isup_si, mp, sls);
+                if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, isup_remote_ip.c_str(), isup_remote_port); msgb_free(m3ua_msg); }
+            } else msgb_free(isup_msg);
+        }
+    }
+    if (do_isup_cgsc) {
+        print_section_header("[ISUP Circuit Group Supervision Control (CGSC)]", "ISUP-interface  MT=0x1D");
+        std::cout << "\n";
+        struct msgb *isup_msg = generate_isup_cgsc(cic_param);
         if (isup_msg) {
             if (send_udp) {
                 struct msgb *m3ua_msg = wrap_in_m3ua(isup_msg, isup_opc_ni0, isup_dpc_ni0, isup_m3ua_ni, isup_si, mp, sls);
@@ -16912,6 +17339,18 @@ int main(int argc, char** argv) {
     if (do_dtap_rr_synchronisation_chan_info)
         send_dtap_a(generate_dtap_rr_synchronisation_channel_info(),
                     "[DTAP RR Synchronisation Channel Info]", "A-interface  MT=0x3B");
+    if (do_dtap_rr_si_type3)
+        send_dtap_a(generate_dtap_rr_system_information_type3(),
+                    "[DTAP RR System Information Type 3]", "A-interface  MT=0x1B");
+    if (do_dtap_rr_si_type4)
+        send_dtap_a(generate_dtap_rr_system_information_type4(),
+                    "[DTAP RR System Information Type 4]", "A-interface  MT=0x1C");
+    if (do_dtap_rr_si_type5)
+        send_dtap_a(generate_dtap_rr_system_information_type5(),
+                    "[DTAP RR System Information Type 5]", "A-interface  MT=0x1D");
+    if (do_dtap_rr_si_type6)
+        send_dtap_a(generate_dtap_rr_system_information_type6(),
+                    "[DTAP RR System Information Type 6]", "A-interface  MT=0x1E");
 
 
     talloc_free(ctx);
