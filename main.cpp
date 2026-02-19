@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -38,12 +39,47 @@ static uint32_t sccp_src_local_ref = 0x00000001;
 static uint32_t sccp_dst_local_ref = 0x00000000;
 
 // Структура конфигурации
+// VLR — запись о зарегистрированном абоненте (в памяти + vmsc_vlr.conf)
+enum class VlrState : uint8_t {
+    REGISTERED   = 0,  // зарегистрирован (LU Complete)
+    DEREGISTERED = 1,  // снят с учёта (IMSI Detach)
+    PAGING       = 2,  // ожидает ответа на Paging
+};
+
+struct VlrEntry {
+    std::string imsi;
+    std::string msisdn;
+    uint32_t    tmsi      = 0;
+    uint16_t    lac       = 0;
+    uint16_t    cell_id   = 0;
+    VlrState    state     = VlrState::REGISTERED;
+    std::string timestamp;   // время регистрации (ISO-like)
+    std::string label;
+
+    static std::string state_str(VlrState s) {
+        switch (s) {
+            case VlrState::REGISTERED:   return "REG";
+            case VlrState::DEREGISTERED: return "DEREG";
+            case VlrState::PAGING:       return "PAGING";
+        }
+        return "?";
+    }
+};
+
 struct GtRoute {
     std::string prefix;       // E.164-префикс (например: 7916)
     std::string iface;        // интерфейс: a, c, f, e, nc, isup, gs
     uint32_t    dpc = 0;      // DPC назначения (point code)
     std::string description;  // произвольное описание
     std::string spid;         // SPID метка (явная; иначе — авто-корреляция по DPC)
+};
+
+// Запись абонента (соответствует [subscriber-N] в конфиге)
+struct SubscriberEntry {
+    std::string imsi;
+    std::string msisdn;
+    uint32_t    tmsi  = 0;   // TMSI (0 = не назначен)
+    std::string label;       // произвольная метка
 };
 
 struct Config {
@@ -173,7 +209,9 @@ struct Config {
     std::string gs_local_spid   = "";  // OPC Gs-interface (MSC)
     std::string gs_remote_spid  = "";  // DPC Gs-interface (SGSN)
     // Таблица GT-маршрутизации SCCP
-    std::vector<GtRoute> gt_routes;
+    std::vector<GtRoute>         gt_routes;
+    // Список абонентов ([subscriber], [subscriber-2], ...)
+    std::vector<SubscriberEntry> subscribers;
 };
 
 // Загрузка конфигурации из файла
@@ -214,10 +252,28 @@ static bool load_config(const std::string &path, Config &cfg) {
         
         // Парсим значения
         // Новый формат: интерфейсы MSC
-        if (section == "subscriber") {
-            if      (key == "imsi")   cfg.imsi   = value;
-            else if (key == "msisdn") cfg.msisdn = value;
-            else if (key == "msc_gt") cfg.msc_gt = value;
+        if (section == "subscriber" ||
+            (section.size() > 11 && section.substr(0, 11) == "subscriber-")) {
+            // Определяем индекс: [subscriber]=0, [subscriber-1]=0, [subscriber-2]=1, ...
+            int sub_idx = 0;
+            if (section != "subscriber") {
+                try { sub_idx = std::stoi(section.substr(11)) - 1; } catch (...) { sub_idx = 0; }
+            }
+            if (sub_idx < 0) sub_idx = 0;
+            if (sub_idx >= (int)cfg.subscribers.size())
+                cfg.subscribers.resize(sub_idx + 1);
+            if      (key == "imsi")   cfg.subscribers[sub_idx].imsi   = value;
+            else if (key == "msisdn") cfg.subscribers[sub_idx].msisdn = value;
+            else if (key == "tmsi") {
+                try { cfg.subscribers[sub_idx].tmsi = (uint32_t)std::stoul(value, nullptr, 0); } catch (...) {}
+            }
+            else if (key == "label")  cfg.subscribers[sub_idx].label  = value;
+            // Обратная совместимость: [subscriber] и [subscriber-1] синхронизируют cfg.imsi/msisdn
+            if (sub_idx == 0) {
+                if (key == "imsi")   cfg.imsi   = value;
+                if (key == "msisdn") cfg.msisdn = value;
+                if (key == "msc_gt") cfg.msc_gt = value;
+            }
         } else if (section == "a-interface") {
             // Сетевые параметры
             if      (key == "mcc")    cfg.mcc    = std::stoi(value);
@@ -425,6 +481,19 @@ static bool save_config(const std::string &path, const Config &cfg) {
     file << "imsi="   << cfg.imsi   << "\n";
     if (!cfg.msisdn.empty())
         file << "msisdn=" << cfg.msisdn << "\n";
+    // Дополнительные абоненты [subscriber-2], [subscriber-3], ...
+    for (int _i = 1; _i < (int)cfg.subscribers.size(); ++_i) {
+        const auto &_sub = cfg.subscribers[_i];
+        if (_sub.imsi.empty()) continue;
+        std::string _lbl = _sub.label.empty() ? "Абонент " + std::to_string(_i + 1) : _sub.label;
+        sec("[subscriber-" + std::to_string(_i + 1) + "]", _lbl);
+        file << "imsi=" << _sub.imsi << "\n";
+        if (!_sub.msisdn.empty()) file << "msisdn=" << _sub.msisdn << "\n";
+        if (_sub.tmsi != 0)
+            file << "tmsi=0x" << std::hex << std::uppercase << _sub.tmsi
+                 << std::dec << std::nouppercase << "\n";
+        if (!_sub.label.empty()) file << "label=" << _sub.label << "\n";
+    }
 
     // --- [a-interface] ---
     sec("[A-interface]", "MSC ↔ BSC  (GSM A-interface)");
@@ -11796,6 +11865,15 @@ int main(int argc, char** argv) {
     std::string config_path = loaded_configs.empty() ? "" : loaded_configs.back();
     bool config_loaded = !loaded_configs.empty();
 
+    // Синхронизация списка абонентов с cfg.imsi/msisdn (обратная совместимость)
+    if (cfg.subscribers.empty() && !cfg.imsi.empty()) {
+        SubscriberEntry _e; _e.imsi = cfg.imsi; _e.msisdn = cfg.msisdn;
+        cfg.subscribers.push_back(_e);
+    } else if (!cfg.subscribers.empty() && cfg.subscribers[0].imsi.empty() && !cfg.imsi.empty()) {
+        cfg.subscribers[0].imsi   = cfg.imsi;
+        cfg.subscribers[0].msisdn = cfg.msisdn;
+    }
+
     std::string imsi   = cfg.imsi;
     std::string msisdn = cfg.msisdn;  // MSISDN: номер абонента, привязан к IMSI
     uint16_t mcc = cfg.mcc;
@@ -11803,6 +11881,7 @@ int main(int argc, char** argv) {
     uint16_t lac = cfg.lac;
     bool do_lu = true;
     bool do_paging = true;
+    std::string call_flow_name = "";  // --call-flow <name>
     bool do_map_sai          = false;  // MAP SendAuthenticationInfo (C-interface, MSC→HLR)
     bool do_map_ul           = false;  // MAP UpdateLocation         (C-interface, MSC→HLR)
     bool do_map_check_imei   = false;  // MAP CheckIMEI              (F-interface, MSC→EIR)
@@ -12509,11 +12588,47 @@ int main(int argc, char** argv) {
     bool show_isup_interface = false;
     bool show_gs_interface   = false;
     bool show_gt_route       = false;  // --show-gt-route
+    bool show_vlr            = false;  // --show-vlr
+    bool vlr_register        = false;  // --vlr-register
+    bool vlr_deregister      = false;  // --vlr-deregister
+    bool vlr_clear           = false;  // --vlr-clear
 
     // Простой парсинг аргументов
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--imsi" && i+1 < argc) imsi = argv[++i];
+        else if (arg == "--subscriber" && i+1 < argc) {
+            std::string sel = argv[++i];
+            bool found = false;
+            // Поиск по номеру (1-based, не более 4 цифр), IMSI, MSISDN или label
+            bool is_num = !sel.empty() && sel.size() <= 4;
+            for (char c : sel) if (!isdigit((unsigned char)c)) { is_num = false; break; }
+            if (is_num) {
+                int idx = std::stoi(sel) - 1;
+                if (idx >= 0 && idx < (int)cfg.subscribers.size()) {
+                    imsi   = cfg.subscribers[idx].imsi;
+                    msisdn = cfg.subscribers[idx].msisdn;
+                    found  = true;
+                }
+            }
+            if (!found) {
+                for (const auto &_s : cfg.subscribers) {
+                    if (_s.imsi == sel || _s.msisdn == sel || _s.label == sel) {
+                        imsi   = _s.imsi;
+                        msisdn = _s.msisdn;
+                        found  = true;
+                        break;
+                    }
+                }
+            }
+            if (!found)
+                std::cerr << COLOR_YELLOW << "  ⚠ Абонент '" << sel << "' не найден в конфиге\n" << COLOR_RESET;
+        }
+        else if (arg == "--call-flow" && i+1 < argc) {
+            call_flow_name = argv[++i];
+            do_lu = false;
+            do_paging = false;
+        }
         else if (arg == "--mcc" && i+1 < argc) mcc = std::stoi(argv[++i]);
         else if (arg == "--mnc" && i+1 < argc) mnc = std::stoi(argv[++i]);
         else if (arg == "--lac" && i+1 < argc) lac = std::stoi(argv[++i]);
@@ -12674,7 +12789,7 @@ int main(int argc, char** argv) {
             do_lu = false;
             do_paging = false;
         }
-        else if (arg == "--show-subscriber") {
+        else if (arg == "--show-subscriber" || arg == "--show-subscribers") {
             if (show_all) { show_all = false; }
             show_subscriber = true;
             do_lu = false;
@@ -12740,6 +12855,23 @@ int main(int argc, char** argv) {
             show_gt_route = true;
             do_lu = false;
             do_paging = false;
+        }
+        else if (arg == "--show-vlr") {
+            if (show_all) { show_all = false; }
+            show_vlr = true;
+            do_lu = false; do_paging = false;
+        }
+        else if (arg == "--vlr-register") {
+            vlr_register = true;
+            do_lu = false; do_paging = false;
+        }
+        else if (arg == "--vlr-deregister") {
+            vlr_deregister = true;
+            do_lu = false; do_paging = false;
+        }
+        else if (arg == "--vlr-clear") {
+            vlr_clear = true;
+            do_lu = false; do_paging = false;
         }
         // ── C-интерфейс: MAP over SCCP UDT ──────────────────────────
         else if (arg == "--send-map-sai") {
@@ -13941,9 +14073,32 @@ int main(int argc, char** argv) {
     // [subscriber] / старый [identity]
     if (show_all || show_subscriber || show_identity) {
         print_section_header("[subscriber]");
-        std::cout << "  IMSI:   " << COLOR_GREEN << imsi   << COLOR_RESET << "\n";
-        if (!msisdn.empty())
-            std::cout << "  MSISDN: " << COLOR_GREEN << msisdn << COLOR_RESET << "\n";
+        if (cfg.subscribers.size() > 1) {
+            // Таблица абонентов
+            for (int _i = 0; _i < (int)cfg.subscribers.size(); ++_i) {
+                const auto &_s = cfg.subscribers[_i];
+                if (_s.imsi.empty()) continue;
+                bool _active = (_s.imsi == imsi);
+                std::cout << "  " << (_active ? COLOR_GREEN : "") << (_active ? "►" : " ")
+                          << " [" << (_i + 1) << "] IMSI: " << COLOR_GREEN << _s.imsi << COLOR_RESET;
+                if (!_s.msisdn.empty())
+                    std::cout << "  MSISDN: " << COLOR_GREEN << _s.msisdn << COLOR_RESET;
+                if (_s.tmsi != 0)
+                    std::cout << "  TMSI: " << COLOR_YELLOW << "0x" << std::hex
+                              << std::uppercase << std::setw(8) << std::setfill('0')
+                              << _s.tmsi << std::dec << std::nouppercase
+                              << std::setw(0) << std::setfill(' ') << COLOR_RESET;
+                if (!_s.label.empty())
+                    std::cout << "  (" << _s.label << ")";
+                if (_active)
+                    std::cout << COLOR_CYAN << "  ← активный" << COLOR_RESET;
+                std::cout << "\n";
+            }
+        } else {
+            std::cout << "  IMSI:   " << COLOR_GREEN << imsi   << COLOR_RESET << "\n";
+            if (!msisdn.empty())
+                std::cout << "  MSISDN: " << COLOR_GREEN << msisdn << COLOR_RESET << "\n";
+        }
         std::cout << "\n";
     }
 
@@ -14314,6 +14469,185 @@ int main(int argc, char** argv) {
                       << COLOR_YELLOW << "■" << COLOR_RESET << " SPID неизвестен\n";
         }
         std::cout << "\n";
+    }
+
+    // ── VLR: load, modify, display ───────────────────────────────────────────
+    {
+        // Путь к файлу VLR (рядом с vmsc.conf)
+        auto vlr_path = [&]() -> std::string {
+            if (!config_path.empty()) {
+                std::string base = config_path;
+                size_t slash = base.find_last_of("/\\");
+                if (slash != std::string::npos) base = base.substr(0, slash + 1);
+                else base = "./";
+                return base + "vmsc_vlr.conf";
+            }
+            return "./vmsc_vlr.conf";
+        }();
+
+        // Загрузка VLR из файла
+        std::vector<VlrEntry> vlr_table;
+        auto vlr_load = [&]() {
+            vlr_table.clear();
+            std::ifstream f(vlr_path);
+            if (!f.is_open()) return;
+            std::string line;
+            VlrEntry e;
+            bool in_entry = false;
+            while (std::getline(f, line)) {
+                line.erase(0, line.find_first_not_of(" \t\r\n"));
+                if (line.empty() || line[0] == '#') continue;
+                if (line[0] == '[') {
+                    if (in_entry && !e.imsi.empty()) vlr_table.push_back(e);
+                    e = VlrEntry{}; in_entry = true;
+                    continue;
+                }
+                size_t eq = line.find('=');
+                if (eq == std::string::npos) continue;
+                std::string k = line.substr(0, eq), v = line.substr(eq + 1);
+                k.erase(0, k.find_first_not_of(" \t")); k.erase(k.find_last_not_of(" \t") + 1);
+                v.erase(0, v.find_first_not_of(" \t")); v.erase(v.find_last_not_of(" \t") + 1);
+                if      (k == "imsi")    e.imsi    = v;
+                else if (k == "msisdn")  e.msisdn  = v;
+                else if (k == "tmsi")    { try { e.tmsi = (uint32_t)std::stoul(v, nullptr, 0); } catch(...){} }
+                else if (k == "lac")     { try { e.lac  = (uint16_t)std::stoul(v); } catch(...){} }
+                else if (k == "cell_id") { try { e.cell_id = (uint16_t)std::stoul(v); } catch(...){} }
+                else if (k == "state")   { e.state = (v == "DEREG") ? VlrState::DEREGISTERED : (v == "PAGING") ? VlrState::PAGING : VlrState::REGISTERED; }
+                else if (k == "ts")      e.timestamp = v;
+                else if (k == "label")   e.label = v;
+            }
+            if (in_entry && !e.imsi.empty()) vlr_table.push_back(e);
+        };
+
+        // Сохранение VLR в файл
+        auto vlr_save = [&]() {
+            std::ofstream f(vlr_path);
+            if (!f.is_open()) return;
+            f << "# vMSC VLR Table — автоматически создан\n";
+            for (const auto &e : vlr_table) {
+                f << "[entry]\n";
+                f << "imsi=" << e.imsi << "\n";
+                if (!e.msisdn.empty()) f << "msisdn=" << e.msisdn << "\n";
+                if (e.tmsi) f << "tmsi=0x" << std::hex << std::uppercase
+                               << std::setw(8) << std::setfill('0') << e.tmsi
+                               << std::dec << std::nouppercase << std::setw(0) << std::setfill(' ') << "\n";
+                f << "lac=" << e.lac << "\n";
+                f << "cell_id=" << e.cell_id << "\n";
+                f << "state=" << VlrEntry::state_str(e.state) << "\n";
+                if (!e.timestamp.empty()) f << "ts=" << e.timestamp << "\n";
+                if (!e.label.empty()) f << "label=" << e.label << "\n";
+            }
+        };
+
+        // Текущая метка времени
+        auto now_str = []() -> std::string {
+            time_t t = time(nullptr);
+            struct tm tm_buf{};
+            localtime_r(&t, &tm_buf);
+            char buf[32];
+            strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_buf);
+            return std::string(buf);
+        };
+
+        vlr_load();
+
+        // ── --vlr-clear: очистить таблицу ─────────────────────────────────
+        if (vlr_clear) {
+            vlr_table.clear();
+            vlr_save();
+            std::cout << COLOR_CYAN << "  VLR таблица очищена\n" << COLOR_RESET;
+        }
+
+        // ── --vlr-deregister: снять с учёта (IMSI Detach) ────────────────
+        if (vlr_deregister) {
+            bool found = false;
+            for (auto &e : vlr_table) {
+                if (e.imsi == imsi) {
+                    e.state = VlrState::DEREGISTERED;
+                    e.timestamp = now_str();
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                std::cout << COLOR_YELLOW << "  ⚠ IMSI " << imsi << " не найден в VLR\n" << COLOR_RESET;
+            else
+                std::cout << COLOR_GREEN << "  ✓ " << imsi << " снят с учёта (DEREG)\n" << COLOR_RESET;
+            vlr_save();
+        }
+
+        // ── --vlr-register: зарегистрировать абонента ─────────────────────
+        if (vlr_register) {
+            VlrEntry *found_entry = nullptr;
+            for (auto &e : vlr_table)
+                if (e.imsi == imsi) { found_entry = &e; break; }
+            if (found_entry) {
+                found_entry->msisdn  = msisdn;
+                found_entry->lac     = lac;
+                found_entry->cell_id = cell_id;
+                found_entry->state   = VlrState::REGISTERED;
+                found_entry->timestamp = now_str();
+                // TMSI из subscribers если есть
+                for (const auto &_s : cfg.subscribers)
+                    if (_s.imsi == imsi && _s.tmsi) found_entry->tmsi = _s.tmsi;
+            } else {
+                VlrEntry ne;
+                ne.imsi      = imsi;
+                ne.msisdn    = msisdn;
+                ne.lac       = lac;
+                ne.cell_id   = cell_id;
+                ne.state     = VlrState::REGISTERED;
+                ne.timestamp = now_str();
+                for (const auto &_s : cfg.subscribers)
+                    if (_s.imsi == imsi) { if (_s.tmsi) ne.tmsi = _s.tmsi; ne.label = _s.label; }
+                vlr_table.push_back(ne);
+            }
+            std::cout << COLOR_GREEN << "  ✓ " << imsi
+                      << (msisdn.empty() ? "" : "  MSISDN: " + msisdn)
+                      << "  зарегистрирован (VLR)\n" << COLOR_RESET;
+            vlr_save();
+        }
+
+        // ── --show-vlr: отобразить таблицу ───────────────────────────────
+        if (show_vlr) {
+            print_section_header("[VLR]", "Таблица зарегистрированных абонентов");
+            if (vlr_table.empty()) {
+                std::cout << "  " << COLOR_YELLOW << "(таблица пуста — используйте --vlr-register)\n" << COLOR_RESET;
+            } else {
+                // Заголовок
+                auto padR = [](const std::string &s, int w) -> std::string {
+                    return s.size() < (size_t)w ? s + std::string(w - s.size(), ' ') : s.substr(0, w);
+                };
+                std::cout << "  " << COLOR_CYAN
+                          << padR("IMSI", 17) << padR("MSISDN", 13)
+                          << padR("TMSI", 12) << padR("LAC", 7) << padR("CI", 6)
+                          << padR("STATE", 8) << "TIMESTAMP" << COLOR_RESET << "\n";
+                std::cout << "  " << std::string(72, '-') << "\n";
+                for (const auto &e : vlr_table) {
+                    // Цвет по состоянию
+                    const char *sc = (e.state == VlrState::REGISTERED)   ? COLOR_GREEN  :
+                                     (e.state == VlrState::DEREGISTERED)  ? COLOR_YELLOW : COLOR_CYAN;
+                    std::string tmsi_str = e.tmsi ?
+                        (std::string("0x") + [&]{ std::ostringstream os; os << std::hex << std::uppercase
+                            << std::setw(8) << std::setfill('0') << e.tmsi; return os.str(); }()) : "—";
+                    std::cout << "  "
+                              << COLOR_GREEN << padR(e.imsi,  17) << COLOR_RESET
+                              << padR(e.msisdn.empty() ? "—" : e.msisdn, 13)
+                              << padR(tmsi_str, 12)
+                              << padR(std::to_string(e.lac),     7)
+                              << padR(std::to_string(e.cell_id), 6)
+                              << sc << padR(VlrEntry::state_str(e.state), 8) << COLOR_RESET
+                              << e.timestamp;
+                    if (!e.label.empty()) std::cout << "  (" << e.label << ")";
+                    std::cout << "\n";
+                }
+                long reg_cnt = std::count_if(vlr_table.begin(), vlr_table.end(),
+                    [](const VlrEntry &x){ return x.state == VlrState::REGISTERED; });
+                std::cout << "\n  Итого: " << COLOR_GREEN << vlr_table.size() << COLOR_RESET
+                          << " записей,  зарегистрировано: " << COLOR_GREEN << reg_cnt << COLOR_RESET << "\n";
+            }
+            std::cout << "\n";
+        }
     }
 
     if (show_encapsulation || (show_all && send_udp)) {
@@ -19479,6 +19813,164 @@ int main(int argc, char** argv) {
         }
         msgb_free(dtap_msg);
     };
+
+    // Вспомогательная лямбда: BSSMAP → SCCP CR → M3UA → UDP (A-интерфейс)
+    auto send_bssmap_a = [&](struct msgb *bssap_msg, const char *hdr, const char *sub) {
+        if (!bssap_msg) return;
+        print_section_header(hdr, sub);
+        std::cout << "\n";
+        if (send_udp) {
+            struct msgb *sccp_msg = wrap_in_sccp_cr(bssap_msg, a_ssn);
+            if (sccp_msg) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, m3ua_opc, m3ua_dpc, m3ua_ni, a_si, mp, sls);
+                if (m3ua_msg) {
+                    send_message_udp(m3ua_msg->data, m3ua_msg->len, remote_ip.c_str(), remote_port);
+                    msgb_free(m3ua_msg);
+                }
+                msgb_free(sccp_msg);
+            }
+        }
+        msgb_free(bssap_msg);
+    };
+
+    // Вспомогательная лямбда: MAP → SCCP UDT → M3UA → UDP (C-интерфейс)
+    auto send_map_c = [&](struct msgb *map_msg, const char *hdr, const char *sub) {
+        if (!map_msg) return;
+        print_section_header(hdr, sub);
+        std::cout << "\n";
+        if (send_udp && !c_remote_ip.empty()) {
+            ScpAddr c_called  { c_ssn_remote, c_gt_ind, gt_tt, gt_np, gt_nai, c_gt_called };
+            ScpAddr c_calling { c_ssn_local,  c_gt_ind, gt_tt, gt_np, gt_nai, msc_gt };
+            struct msgb *sccp_msg = wrap_in_sccp_udt(map_msg, c_called, c_calling);
+            if (sccp_msg) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(sccp_msg, c_opc, c_dpc, c_m3ua_ni, c_si, mp, sls);
+                if (m3ua_msg) {
+                    send_message_udp(m3ua_msg->data, m3ua_msg->len, c_remote_ip.c_str(), c_remote_port);
+                    msgb_free(m3ua_msg);
+                }
+                msgb_free(sccp_msg);
+            }
+        }
+        msgb_free(map_msg);
+    };
+
+    // ── Автоматические call flow (последовательность сообщений) ─────────────────────
+    if (!call_flow_name.empty()) {
+        const uint8_t kc_zeros[8] = {};
+        const std::string vlr_num = msisdn.empty() ? "79990000001" : msisdn;
+        const std::string smsc_addr = smsc_param;
+
+        // Шапка печати заголовка flow
+        std::string flow_title = "Call Flow: " + call_flow_name;
+        std::cout << "\n" << COLOR_MAGENTA
+                  << std::string(64, '=') << "\n"
+                  << "  " << flow_title << "\n"
+                  << "  IMSI: " << imsi
+                  << (msisdn.empty() ? "" : "  MSISDN: " + msisdn) << "\n"
+                  << std::string(64, '=') << COLOR_RESET << "\n\n";
+
+        if (call_flow_name == "mo-lu") {
+            // ── 1. BSSMAP Reset (MSC → BSC)
+            send_bssmap_a(generate_bssmap_reset(0x00),
+                "[BSSMAP Reset]", "A-interface  MSC → BSC  MT=0x30");
+            // ── 2. LU Request (MS → MSC via BSC)
+            send_dtap_a(generate_dtap_mm_lu_request(imsi.c_str(), mcc, mnc, lac, 0),
+                "[DTAP MM LU Request]", "A-interface  MS → MSC  MT=0x08");
+            // ── 3. Identity Request (MSC → MS)
+            send_dtap_a(generate_dtap_mm_id_req(1),
+                "[DTAP MM Identity Request]", "A-interface  MSC → MS  MT=0x18");
+            // ── 4. Ciphering Mode Command (MSC → BSC)
+            send_bssmap_a(generate_bssmap_cipher_mode_cmd(0x02, kc_zeros),
+                "[BSSMAP Cipher Mode Command]", "A-interface  MSC → BSC  MT=0x35");
+            // ── 5. LU Accept (MSC → MS)
+            send_dtap_a(generate_dtap_mm_lu_accept(mcc, mnc, lac, 0x01020304),
+                "[DTAP MM LU Accept]", "A-interface  MSC → MS  MT=0x02");
+
+        } else if (call_flow_name == "full-lu") {
+            // ── 1. BSSMAP Reset
+            send_bssmap_a(generate_bssmap_reset(0x00),
+                "[BSSMAP Reset]", "A-interface  MSC → BSC  MT=0x30");
+            // ── 2. LU Request
+            send_dtap_a(generate_dtap_mm_lu_request(imsi.c_str(), mcc, mnc, lac, 0),
+                "[DTAP MM LU Request]", "A-interface  MS → MSC  MT=0x08");
+            // ── 3. MAP SAI (C-interface)
+            send_map_c(generate_map_send_auth_info(imsi.c_str()),
+                "[MAP SendAuthInfo]", "C-interface  MSC → HLR  opCode=56");
+            // ── 4. Auth Request (MSC → MS)
+            send_dtap_a(generate_dtap_mm_auth_req(0),
+                "[DTAP MM Auth Request]", "A-interface  MSC → MS  MT=0x12");
+            // ── 5. Ciphering Mode Command
+            send_bssmap_a(generate_bssmap_cipher_mode_cmd(0x02, kc_zeros),
+                "[BSSMAP Cipher Mode Command]", "A-interface  MSC → BSC  MT=0x35");
+            // ── 6. LU Accept
+            send_dtap_a(generate_dtap_mm_lu_accept(mcc, mnc, lac, 0x01020304),
+                "[DTAP MM LU Accept]", "A-interface  MSC → MS  MT=0x02");
+            // ── 7. TMSI Realloc Command
+            send_dtap_a(generate_dtap_tmsi_realloc_cmd(mcc, mnc, lac, 0x01020304),
+                "[DTAP MM TMSI Realloc Command]", "A-interface  MSC → MS  MT=0x1A");
+            // ── 8. TMSI Realloc Complete
+            send_dtap_a(generate_dtap_tmsi_realloc_compl(),
+                "[DTAP MM TMSI Realloc Complete]", "A-interface  MS → MSC  MT=0x1B");
+
+        } else if (call_flow_name == "mo-call") {
+            // MO-call flow: CM-SrvReq → Setup → CallProc → Assign → Alerting → Connect → ConnAck
+            send_dtap_a(generate_dtap_mm_cm_service_req(imsi.c_str(), 1),
+                "[DTAP MM CM Service Request]", "A-interface  MS → MSC  MT=0x24");
+            send_dtap_a(generate_dtap_mm_cm_service_acc(),
+                "[DTAP MM CM Service Accept]", "A-interface  MSC → MS  MT=0x21");
+            send_dtap_a(generate_dtap_cc_setup_mo(0, vlr_num.c_str()),
+                "[DTAP CC Setup MO]", "A-interface  MS → MSC  MT=0x05");
+            send_bssmap_a(generate_bssmap_assignment_request(0x01, 1),
+                "[BSSMAP Assignment Request]", "A-interface  MSC → BSC  MT=0x01");
+            send_dtap_a(generate_dtap_cc_call_proceeding(0),
+                "[DTAP CC Call Proceeding]", "A-interface  MSC → MS  MT=0x02");
+            send_dtap_a(generate_dtap_cc_alerting(0),
+                "[DTAP CC Alerting]", "A-interface  MSC → MS  MT=0x01");
+            send_dtap_a(generate_dtap_cc_connect(0, false),
+                "[DTAP CC Connect]", "A-interface  MSC → MS  MT=0x07");
+            send_dtap_a(generate_dtap_cc_connect_ack(0),
+                "[DTAP CC Connect Ack]", "A-interface  MSC → MS  MT=0x0F");
+
+        } else if (call_flow_name == "mo-call-rel") {
+            // Release: Disconnect → Release → Release Complete
+            send_dtap_a(generate_dtap_cc_disconnect(0, true, 16),
+                "[DTAP CC Disconnect]", "A-interface  MSC → MS  MT=0x25");
+            send_dtap_a(generate_dtap_cc_release(0, true, 0),
+                "[DTAP CC Release]", "A-interface  MSC → MS  MT=0x2D");
+            send_dtap_a(generate_dtap_cc_release_complete(0, true),
+                "[DTAP CC Release Complete]", "A-interface  MSC → MS  MT=0x2A");
+
+        } else if (call_flow_name == "mt-call") {
+            // MT-call flow: Paging → Setup MT → CallProc → Alerting → Connect
+            send_bssmap_a(generate_bssmap_paging(imsi.c_str(), lac),
+                "[BSSMAP Paging]", "A-interface  MSC → BSC  MT=0x52");
+            send_dtap_a(generate_dtap_cc_setup_mt(1, vlr_num.c_str()),
+                "[DTAP CC Setup MT]", "A-interface  MSC → MS  MT=0x05");
+            send_dtap_a(generate_dtap_cc_call_proceeding(1),
+                "[DTAP CC Call Proceeding]", "A-interface  MSC → MS  MT=0x02");
+            send_dtap_a(generate_dtap_cc_alerting(1),
+                "[DTAP CC Alerting]", "A-interface  MSC → MS  MT=0x01");
+            send_dtap_a(generate_dtap_cc_connect(1, true),
+                "[DTAP CC Connect (MS→MSC)]", "A-interface  MS → MSC  MT=0x07");
+            send_dtap_a(generate_dtap_cc_connect_ack(1),
+                "[DTAP CC Connect Ack]", "A-interface  MSC → MS  MT=0x0F");
+
+        } else if (call_flow_name == "mo-sms") {
+            // MO-SMS: CM-SrvReq (SMS) → CP-Data → MAP MO-FSM
+            send_dtap_a(generate_dtap_mm_cm_service_req(imsi.c_str(), 4),
+                "[DTAP MM CM Service Request (SMS)]", "A-interface  MS → MSC  MT=0x24");
+            send_dtap_a(generate_dtap_sms_cp_data(1, false),
+                "[DTAP SMS CP-Data]", "A-interface  MS → MSC  MT=0x01");
+            send_map_c(generate_map_mo_forward_sm(imsi.c_str(), smsc_addr.c_str(), sm_text_param.c_str()),
+                "[MAP MO-ForwardSM]", "C-interface  MSC → SMSC  opCode=46");
+
+        } else {
+            std::cerr << COLOR_YELLOW
+                      << "  ⚠ Неизвестный flow: '" << call_flow_name << "'\n"
+                      << "  Доступные: mo-lu | full-lu | mo-call | mo-call-rel | mt-call | mo-sms\n"
+                      << COLOR_RESET;
+        }
+    }
 
     if (do_dtap_cm_srv_req)
         send_dtap_a(generate_dtap_mm_cm_service_req(imsi.c_str(), 1),
