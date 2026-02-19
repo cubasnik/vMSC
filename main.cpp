@@ -212,6 +212,10 @@ struct Config {
     std::vector<GtRoute>         gt_routes;
     // Список абонентов ([subscriber], [subscriber-2], ...)
     std::vector<SubscriberEntry> subscribers;
+    // VLR / MSRN пул — временные роуминговые номера для входящих вызовов
+    std::string msrn_prefix      = "";   // Префикс пула (E.164, напр. "79161000")
+    uint32_t    msrn_range_start = 100;  // Первый суффикс пула
+    uint32_t    msrn_range_end   = 999;  // Последний суффикс пула
 };
 
 // Загрузка конфигурации из файла
@@ -415,6 +419,10 @@ static bool load_config(const std::string &path, Config &cfg) {
                     cfg.gt_routes.push_back(r);
                 }
             }
+        } else if (section == "vlr") {
+            if      (key == "msrn_prefix")       cfg.msrn_prefix      = value;
+            else if (key == "msrn_range_start") { try { cfg.msrn_range_start = std::stoul(value); } catch(...){} }
+            else if (key == "msrn_range_end")   { try { cfg.msrn_range_end   = std::stoul(value); } catch(...){} }
         // Обратная совместимость со старым форматом
         } else if (section == "network") {
             if      (key == "mcc") cfg.mcc = std::stoi(value);
@@ -14611,6 +14619,21 @@ int main(int argc, char** argv) {
         // ── --show-vlr: отобразить таблицу ───────────────────────────────
         if (show_vlr) {
             print_section_header("[VLR]", "Таблица зарегистрированных абонентов");
+            // Отображение MSRN пула
+            if (!cfg.msrn_prefix.empty()) {
+                uint32_t pool_size = (cfg.msrn_range_end >= cfg.msrn_range_start)
+                    ? cfg.msrn_range_end - cfg.msrn_range_start + 1 : 0;
+                std::cout << "  MSRN пул:  " << COLOR_GREEN
+                          << cfg.msrn_prefix << cfg.msrn_range_start
+                          << COLOR_RESET << " … " << COLOR_GREEN
+                          << cfg.msrn_prefix << cfg.msrn_range_end
+                          << COLOR_RESET
+                          << "  (" << pool_size << " номеров)\n\n";
+            } else {
+                std::cout << "  " << COLOR_YELLOW
+                          << "MSRN пул не настроен — добавьте [vlr] msrn_prefix= в vmsc.conf\n"
+                          << COLOR_RESET;
+            }
             if (vlr_table.empty()) {
                 std::cout << "  " << COLOR_YELLOW << "(таблица пуста — используйте --vlr-register)\n" << COLOR_RESET;
             } else {
@@ -16372,7 +16395,17 @@ int main(int argc, char** argv) {
     if (do_map_prn) {
         print_section_header("[MAP ProvideRoamingNumber]", "C-interface  GMSC → HLR  (MT-call, opCode=4)");
         std::cout << "\n";
-        struct msgb *map_msg = generate_map_provide_roaming_number(imsi.c_str(), msisdn.c_str());
+        // Выбор MSRN из пула (round-robin)
+        std::string prn_msrn;
+        if (!cfg.msrn_prefix.empty() && cfg.msrn_range_end >= cfg.msrn_range_start) {
+            static uint32_t msrn_ctr = 0;
+            uint32_t range = cfg.msrn_range_end - cfg.msrn_range_start + 1;
+            uint32_t num   = cfg.msrn_range_start + (msrn_ctr++ % range);
+            prn_msrn = cfg.msrn_prefix + std::to_string(num);
+        } else {
+            prn_msrn = msisdn;  // fallback: MSISDN абонента
+        }
+        struct msgb *map_msg = generate_map_provide_roaming_number(imsi.c_str(), prn_msrn.c_str());
         if (map_msg) {
             if (send_udp && !c_remote_ip.empty()) {
                 ScpAddr c_called  { c_ssn_remote, c_gt_ind, gt_tt, gt_np, gt_nai, c_gt_called };
