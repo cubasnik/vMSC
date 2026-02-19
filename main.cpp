@@ -2984,6 +2984,114 @@ static struct msgb *generate_isup_res(uint16_t cic, uint8_t sus_cause) {
 }
 
 // ──────────────────────────────────────────────────────────────
+// P16: ISUP BLO — Blocking (ITU-T Q.763 §3.4)
+// CIC [2 LE] + MT=0x13 + EOP=0x00  →  4 байта
+// ──────────────────────────────────────────────────────────────
+static struct msgb *generate_isup_blo(uint16_t cic) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "ISUP BLO");
+    if (!msg) return nullptr;
+
+    uint8_t *p = msgb_put(msg, 2);
+    p[0] = (uint8_t)(cic & 0xFF);
+    p[1] = (uint8_t)(cic >> 8);
+
+    *(msgb_put(msg, 1)) = 0x13;  // MT=BLO
+    *(msgb_put(msg, 1)) = 0x00;  // EOP
+
+    std::cout << COLOR_CYAN << "\u2713 Сгенерировано ISUP BLO (Blocking)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  CIC:    " << COLOR_GREEN << cic << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT:     " << COLOR_GREEN << "0x13" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер:  " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ISUP BLO:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────
+// P16: ISUP UBL — Unblocking (ITU-T Q.763 §3.34)
+// CIC [2 LE] + MT=0x14 + EOP=0x00  →  4 байта
+// ──────────────────────────────────────────────────────────────
+static struct msgb *generate_isup_ubl(uint16_t cic) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "ISUP UBL");
+    if (!msg) return nullptr;
+
+    uint8_t *p = msgb_put(msg, 2);
+    p[0] = (uint8_t)(cic & 0xFF);
+    p[1] = (uint8_t)(cic >> 8);
+
+    *(msgb_put(msg, 1)) = 0x14;  // MT=UBL
+    *(msgb_put(msg, 1)) = 0x00;  // EOP
+
+    std::cout << COLOR_CYAN << "\u2713 Сгенерировано ISUP UBL (Unblocking)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  CIC:    " << COLOR_GREEN << cic << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT:     " << COLOR_GREEN << "0x14" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер:  " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ISUP UBL:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────
+// P16: ISUP RSC — Reset Circuit (ITU-T Q.763 §3.26)
+// CIC [2 LE] + MT=0x12 + EOP=0x00  →  4 байта
+// ──────────────────────────────────────────────────────────────
+static struct msgb *generate_isup_rsc(uint16_t cic) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "ISUP RSC");
+    if (!msg) return nullptr;
+
+    uint8_t *p = msgb_put(msg, 2);
+    p[0] = (uint8_t)(cic & 0xFF);
+    p[1] = (uint8_t)(cic >> 8);
+
+    *(msgb_put(msg, 1)) = 0x12;  // MT=RSC
+    *(msgb_put(msg, 1)) = 0x00;  // EOP
+
+    std::cout << COLOR_CYAN << "\u2713 Сгенерировано ISUP RSC (Reset Circuit)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  CIC:    " << COLOR_GREEN << cic << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT:     " << COLOR_GREEN << "0x12" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер:  " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ISUP RSC:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────
+// P16: ISUP GRS — Group Reset (ITU-T Q.763 §3.16)
+// CIC [2 LE] + MT=0x17
+// + Mandatory variable part pointer = 0x01
+// + Range and Status: len=0x01 + range_value
+// + EOP=0x00  →  7 байт
+// range_value: 0 = 1 цепь, N = N+1 цепей (умолч. 7 = 8 цепей)
+// ──────────────────────────────────────────────────────────────
+static struct msgb *generate_isup_grs(uint16_t cic, uint8_t range_value) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "ISUP GRS");
+    if (!msg) return nullptr;
+
+    uint8_t *p = msgb_put(msg, 2);
+    p[0] = (uint8_t)(cic & 0xFF);
+    p[1] = (uint8_t)(cic >> 8);
+
+    *(msgb_put(msg, 1)) = 0x17;  // MT=GRS
+    *(msgb_put(msg, 1)) = 0x01;  // pointer to Range and Status (1 byte forward)
+    *(msgb_put(msg, 1)) = 0x01;  // Range and Status length
+    *(msgb_put(msg, 1)) = range_value & 0x7F;  // Range (7 bits)
+    *(msgb_put(msg, 1)) = 0x00;  // EOP
+
+    std::cout << COLOR_CYAN << "\u2713 Сгенерировано ISUP GRS (Group Reset)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  CIC:     " << COLOR_GREEN << cic << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Range:   " << COLOR_GREEN << (int)range_value << " (" << (int)(range_value + 1) << " цепей: CIC " << cic << ".." << (cic + range_value) << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT:      " << COLOR_GREEN << "0x17" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер:   " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ISUP GRS:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────
 // Вспомогательная функция: кодирование текста в GSM-7 (3GPP TS 23.038 §6.2.1)
 // in: ASCII-строка до 160 символов
 // out: буфер GSM7-packed данных, возвращает длину в байтах
@@ -4963,6 +5071,12 @@ int main(int argc, char** argv) {
     bool     do_isup_sus  = false;     // ISUP SUS Suspend                     (ISUP-interface)
     bool     do_isup_res  = false;     // ISUP RES Resume                      (ISUP-interface)
     uint8_t  sus_cause_param = 0;      // --sus-cause: 0=network, 1=subscriber
+    // P16: ISUP Circuit Management (ITU-T Q.763)
+    bool     do_isup_blo  = false;     // ISUP BLO Blocking           MT=0x13  (ISUP-interface)
+    bool     do_isup_ubl  = false;     // ISUP UBL Unblocking         MT=0x14  (ISUP-interface)
+    bool     do_isup_rsc  = false;     // ISUP RSC Reset Circuit      MT=0x12  (ISUP-interface)
+    bool     do_isup_grs  = false;     // ISUP GRS Group Reset        MT=0x17  (ISUP-interface)
+    uint8_t  grs_range_param = 7;      // --grs-range: 0–127 (0=1цепь, 7=8цепей)
     // SMS / USSD (P4)
     bool     do_map_mo_fsm = false;    // MAP MO-ForwardSM (opCode=46)            (C-interface)
     bool     do_map_mt_fsm = false;    // MAP MT-ForwardSM (opCode=44)            (C-interface)
@@ -5628,6 +5742,26 @@ int main(int argc, char** argv) {
         }
         else if (arg == "--sus-cause") {
             if (i + 1 < argc) sus_cause_param = (uint8_t)std::stoul(argv[++i]);
+        }
+        // ── P16: ISUP Circuit Management ──────────────────────────────────────
+        else if (arg == "--send-isup-blo") {
+            do_isup_blo = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-isup-ubl") {
+            do_isup_ubl = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-isup-rsc") {
+            do_isup_rsc = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-isup-grs") {
+            do_isup_grs = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--grs-range" && i + 1 < argc) {
+            grs_range_param = (uint8_t)std::stoul(argv[++i], nullptr, 0);
         }
         // P6: A-interface DTAP/BSSMAP
         else if (arg == "--send-dtap-auth-req") {
@@ -7372,6 +7506,102 @@ int main(int argc, char** argv) {
         uint32_t isup_opc = (isup_m3ua_ni == 0) ? isup_opc_ni0 : isup_opc_ni2;
         uint32_t isup_dpc = (isup_m3ua_ni == 0) ? isup_dpc_ni0 : isup_dpc_ni2;
         struct msgb *isup_msg = generate_isup_res(cic_param, sus_cause_param);
+        if (isup_msg) {
+            if (send_udp && !isup_remote_ip.empty()) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(isup_msg, isup_opc, isup_dpc,
+                                                     isup_m3ua_ni, isup_si, mp,
+                                                     (uint8_t)(cic_param & 0xFF));
+                if (m3ua_msg) {
+                    send_message_udp(m3ua_msg->data, m3ua_msg->len,
+                                     isup_remote_ip.c_str(), isup_remote_port);
+                    msgb_free(m3ua_msg);
+                }
+            } else if (send_udp) {
+                std::cerr << COLOR_YELLOW << "⚠ ISUP-interface: remote_ip не задан\n" << COLOR_RESET;
+            }
+            msgb_free(isup_msg);
+        }
+    }
+
+    // ── ISUP BLO (Blocking) ──────────────────────────────────────────────────
+    if (do_isup_blo) {
+        print_section_header("[ISUP BLO]", "ISUP-interface  (Blocking, MT=0x13)");
+        std::cout << "\n";
+        uint32_t isup_opc = (isup_m3ua_ni == 0) ? isup_opc_ni0 : isup_opc_ni2;
+        uint32_t isup_dpc = (isup_m3ua_ni == 0) ? isup_dpc_ni0 : isup_dpc_ni2;
+        struct msgb *isup_msg = generate_isup_blo(cic_param);
+        if (isup_msg) {
+            if (send_udp && !isup_remote_ip.empty()) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(isup_msg, isup_opc, isup_dpc,
+                                                     isup_m3ua_ni, isup_si, mp,
+                                                     (uint8_t)(cic_param & 0xFF));
+                if (m3ua_msg) {
+                    send_message_udp(m3ua_msg->data, m3ua_msg->len,
+                                     isup_remote_ip.c_str(), isup_remote_port);
+                    msgb_free(m3ua_msg);
+                }
+            } else if (send_udp) {
+                std::cerr << COLOR_YELLOW << "⚠ ISUP-interface: remote_ip не задан\n" << COLOR_RESET;
+            }
+            msgb_free(isup_msg);
+        }
+    }
+
+    // ── ISUP UBL (Unblocking) ────────────────────────────────────────────────
+    if (do_isup_ubl) {
+        print_section_header("[ISUP UBL]", "ISUP-interface  (Unblocking, MT=0x14)");
+        std::cout << "\n";
+        uint32_t isup_opc = (isup_m3ua_ni == 0) ? isup_opc_ni0 : isup_opc_ni2;
+        uint32_t isup_dpc = (isup_m3ua_ni == 0) ? isup_dpc_ni0 : isup_dpc_ni2;
+        struct msgb *isup_msg = generate_isup_ubl(cic_param);
+        if (isup_msg) {
+            if (send_udp && !isup_remote_ip.empty()) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(isup_msg, isup_opc, isup_dpc,
+                                                     isup_m3ua_ni, isup_si, mp,
+                                                     (uint8_t)(cic_param & 0xFF));
+                if (m3ua_msg) {
+                    send_message_udp(m3ua_msg->data, m3ua_msg->len,
+                                     isup_remote_ip.c_str(), isup_remote_port);
+                    msgb_free(m3ua_msg);
+                }
+            } else if (send_udp) {
+                std::cerr << COLOR_YELLOW << "⚠ ISUP-interface: remote_ip не задан\n" << COLOR_RESET;
+            }
+            msgb_free(isup_msg);
+        }
+    }
+
+    // ── ISUP RSC (Reset Circuit) ─────────────────────────────────────────────
+    if (do_isup_rsc) {
+        print_section_header("[ISUP RSC]", "ISUP-interface  (Reset Circuit, MT=0x12)");
+        std::cout << "\n";
+        uint32_t isup_opc = (isup_m3ua_ni == 0) ? isup_opc_ni0 : isup_opc_ni2;
+        uint32_t isup_dpc = (isup_m3ua_ni == 0) ? isup_dpc_ni0 : isup_dpc_ni2;
+        struct msgb *isup_msg = generate_isup_rsc(cic_param);
+        if (isup_msg) {
+            if (send_udp && !isup_remote_ip.empty()) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(isup_msg, isup_opc, isup_dpc,
+                                                     isup_m3ua_ni, isup_si, mp,
+                                                     (uint8_t)(cic_param & 0xFF));
+                if (m3ua_msg) {
+                    send_message_udp(m3ua_msg->data, m3ua_msg->len,
+                                     isup_remote_ip.c_str(), isup_remote_port);
+                    msgb_free(m3ua_msg);
+                }
+            } else if (send_udp) {
+                std::cerr << COLOR_YELLOW << "⚠ ISUP-interface: remote_ip не задан\n" << COLOR_RESET;
+            }
+            msgb_free(isup_msg);
+        }
+    }
+
+    // ── ISUP GRS (Group Reset) ───────────────────────────────────────────────
+    if (do_isup_grs) {
+        print_section_header("[ISUP GRS]", "ISUP-interface  (Group Reset, MT=0x17)");
+        std::cout << "\n";
+        uint32_t isup_opc = (isup_m3ua_ni == 0) ? isup_opc_ni0 : isup_opc_ni2;
+        uint32_t isup_dpc = (isup_m3ua_ni == 0) ? isup_dpc_ni0 : isup_dpc_ni2;
+        struct msgb *isup_msg = generate_isup_grs(cic_param, grs_range_param);
         if (isup_msg) {
             if (send_udp && !isup_remote_ip.empty()) {
                 struct msgb *m3ua_msg = wrap_in_m3ua(isup_msg, isup_opc, isup_dpc,

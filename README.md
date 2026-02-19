@@ -67,6 +67,11 @@ GSM/SIGTRAN protocol message generator and simulator.
 | `--send-isup-sus` | ISUP SUS Suspend (MT=0x0D, ISUP-interface, приостановка B-канала) |
 | `--send-isup-res` | ISUP RES Resume (MT=0x0E, ISUP-interface, возобновление B-канала) |
 | `--sus-cause <N>` | SUS/RES Initiating Side: `0`=network initiated (умолч.), `1`=ISDN subscriber |
+| `--send-isup-blo` | ISUP BLO Blocking (MT=0x13, ISUP-interface, блокировка цепи) |
+| `--send-isup-ubl` | ISUP UBL Unblocking (MT=0x14, ISUP-interface, разблокировка цепи) |
+| `--send-isup-rsc` | ISUP RSC Reset Circuit (MT=0x12, ISUP-interface, сброс цепи) |
+| `--send-isup-grs` | ISUP GRS Group Reset (MT=0x17, ISUP-interface, групповой сброс) |
+| `--grs-range <N>` | Range для GRS: 0–127; N = кол-во доп. цепей (0=1 цепь, 7=8 цепей, умолч. 7) |
 | `--send-map-prep-subseq-ho` | MAP PrepareSubsequentHandover (opCode=69, E-interface, Anchor→Target MSC) |
 | `--send-map-process-access-sig` | MAP ProcessAccessSignalling (opCode=33, E-interface, Target→Anchor MSC) |
 | `--send-map-mo-fsm` | MAP MO-ForwardSM (opCode=46, C-interface, MSC → SMSC, TP-Submit TPDU) |
@@ -233,6 +238,17 @@ MSC (мы)                          HLR (партнёр)
 ./vmsc --send-isup-sus                            --send-udp --use-m3ua   # SUS CIC=1 (Suspend, network)
 ./vmsc --send-isup-sus  --sus-cause 1             --send-udp --use-m3ua   # SUS CIC=1 (Suspend, subscriber)
 ./vmsc --send-isup-res                            --send-udp --use-m3ua   # RES CIC=1 (Resume, network)
+
+# P16: ISUP Circuit Management (ITU-T Q.763)
+./vmsc --send-isup-blo                            --send-udp --use-m3ua   # BLO CIC=1 (Blocking,        MT=0x13)
+./vmsc --send-isup-blo  --cic 42                  --send-udp --use-m3ua   # BLO CIC=42
+./vmsc --send-isup-ubl                            --send-udp --use-m3ua   # UBL CIC=1 (Unblocking,      MT=0x14)
+./vmsc --send-isup-ubl  --cic 42                  --send-udp --use-m3ua   # UBL CIC=42
+./vmsc --send-isup-rsc                            --send-udp --use-m3ua   # RSC CIC=1 (Reset Circuit,   MT=0x12)
+./vmsc --send-isup-rsc  --cic 5                   --send-udp --use-m3ua   # RSC CIC=5
+./vmsc --send-isup-grs                            --send-udp --use-m3ua   # GRS CIC=1 range=7 (8 цепей, MT=0x17)
+./vmsc --send-isup-grs  --cic 8 --grs-range 15    --send-udp --use-m3ua   # GRS CIC=8 range=15 (16 цепей)
+./vmsc --send-isup-grs  --grs-range 0             --send-udp --use-m3ua   # GRS одна цепь
 
 # C-interface: SMS (MAP over SCCP/M3UA)
 ./vmsc --send-map-mo-fsm                           --send-udp --use-m3ua  # MO-ForwardSM (текст по умолчанию)
