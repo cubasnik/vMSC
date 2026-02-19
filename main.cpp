@@ -3178,6 +3178,109 @@ static struct msgb *generate_isup_gra(uint16_t cic, uint8_t range_value) {
 }
 
 // ──────────────────────────────────────────────────────────────
+// P20: ISUP Circuit Group Blocking/Unblocking (ITU-T Q.763 §3.12–3.14)
+//
+// CGB  MT=0x18  Circuit Group Blocking
+// CGU  MT=0x19  Circuit Group Unblocking
+// CGBA MT=0x1A  Circuit Group Blocking Acknowledgement
+// CGUA MT=0x1B  Circuit Group Unblocking Acknowledgement
+//
+// Structure: CIC[2LE] + MT + ptr_CGS + ptr_RS
+//   + CGS.len(1) + cgs_byte(1)
+//   + RS.len(1+bitmap_bytes) + range(1) + status_bitmap[N] + EOP
+// ptr_CGS = 2  (distance from ptr_CGS byte to CGS.len)
+// ptr_RS  = 3  (distance from ptr_RS byte to RS.len)
+// cgs_byte bits 0-1: 0x00=maintenance, 0x01=hardware failure
+// ──────────────────────────────────────────────────────────────
+static struct msgb *build_isup_cg_msg(uint16_t cic, uint8_t mt, uint8_t cgs_byte,
+                                       uint8_t range_value, uint8_t status_fill,
+                                       const char *label) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, label);
+    if (!msg) return nullptr;
+    uint8_t bitmap_bytes = (uint8_t)((range_value + 8) / 8);
+    uint8_t rs_len       = (uint8_t)(1 + bitmap_bytes);
+
+    uint8_t *p = msgb_put(msg, 2);
+    p[0] = (uint8_t)(cic & 0xFF);
+    p[1] = (uint8_t)(cic >> 8);
+    *(msgb_put(msg, 1)) = mt;             // Message Type
+    *(msgb_put(msg, 1)) = 0x02;           // ptr_CGS: 2 bytes to CGS.len
+    *(msgb_put(msg, 1)) = 0x03;           // ptr_RS:  3 bytes to RS.len
+    *(msgb_put(msg, 1)) = 0x01;           // CGS.len = 1
+    *(msgb_put(msg, 1)) = cgs_byte & 0x03; // Circuit Group Supervision indicator
+    *(msgb_put(msg, 1)) = rs_len;         // RS.len = 1 + bitmap
+    *(msgb_put(msg, 1)) = range_value & 0x7F; // Range (7 bits)
+    uint8_t *bm = msgb_put(msg, bitmap_bytes);
+    memset(bm, status_fill, bitmap_bytes);
+    *(msgb_put(msg, 1)) = 0x00;           // EOP
+    return msg;
+}
+
+static struct msgb *generate_isup_cgb(uint16_t cic, uint8_t range_value, uint8_t cause) {
+    struct msgb *msg = build_isup_cg_msg(cic, 0x18, cause, range_value, 0x00, "ISUP CGB");
+    if (!msg) return nullptr;
+    const char *cause_str = (cause & 0x03) == 0 ? "maintenance" : "hardware failure";
+    std::cout << COLOR_CYAN << "✓ Сгенерировано ISUP CGB (Circuit Group Blocking)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  CIC:    " << COLOR_GREEN << cic << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Range:  " << COLOR_GREEN << (int)range_value
+              << " (" << (int)(range_value+1) << " цепей: CIC " << cic << ".." << (cic+range_value) << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Cause:  " << COLOR_GREEN << cause_str << " (" << (int)(cause&3) << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT:     " << COLOR_GREEN << "0x18 (CGB)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ISUP CGB:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+static struct msgb *generate_isup_cgu(uint16_t cic, uint8_t range_value, uint8_t cause) {
+    struct msgb *msg = build_isup_cg_msg(cic, 0x19, cause, range_value, 0x00, "ISUP CGU");
+    if (!msg) return nullptr;
+    const char *cause_str = (cause & 0x03) == 0 ? "maintenance" : "hardware failure";
+    std::cout << COLOR_CYAN << "✓ Сгенерировано ISUP CGU (Circuit Group Unblocking)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  CIC:    " << COLOR_GREEN << cic << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Range:  " << COLOR_GREEN << (int)range_value
+              << " (" << (int)(range_value+1) << " цепей: CIC " << cic << ".." << (cic+range_value) << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Cause:  " << COLOR_GREEN << cause_str << " (" << (int)(cause&3) << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT:     " << COLOR_GREEN << "0x19 (CGU)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ISUP CGU:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+static struct msgb *generate_isup_cgba(uint16_t cic, uint8_t range_value, uint8_t cause) {
+    struct msgb *msg = build_isup_cg_msg(cic, 0x1A, cause, range_value, 0xFF, "ISUP CGBA");
+    if (!msg) return nullptr;
+    std::cout << COLOR_CYAN << "✓ Сгенерировано ISUP CGBA (Circuit Group Blocking Ack)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  CIC:    " << COLOR_GREEN << cic << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Range:  " << COLOR_GREEN << (int)range_value
+              << " (" << (int)(range_value+1) << " цепей)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT:     " << COLOR_GREEN << "0x1A (CGBA)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ISUP CGBA:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+static struct msgb *generate_isup_cgua(uint16_t cic, uint8_t range_value, uint8_t cause) {
+    struct msgb *msg = build_isup_cg_msg(cic, 0x1B, cause, range_value, 0xFF, "ISUP CGUA");
+    if (!msg) return nullptr;
+    std::cout << COLOR_CYAN << "✓ Сгенерировано ISUP CGUA (Circuit Group Unblocking Ack)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  CIC:    " << COLOR_GREEN << cic << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Range:  " << COLOR_GREEN << (int)range_value
+              << " (" << (int)(range_value+1) << " цепей)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MT:     " << COLOR_GREEN << "0x1B (CGUA)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер: " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ISUP CGUA:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────
 // P17: M3UA ASP Management (RFC 4666 §3.5 / §3.6)
 //
 // M3UA Common Header (8 bytes):
@@ -4321,6 +4424,132 @@ static struct msgb *generate_map_interrogate_ss(uint8_t ss_code) {
     std::cout << COLOR_BLUE << "  OpCode:   " << COLOR_GREEN << "14 (0x0E) InterrogateSS" << COLOR_RESET << "\n";
     std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440:   " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
     std::cout << COLOR_YELLOW << "Raw hex MAP InterrogateSS:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ============================================================
+// P20: MAP Password + AnyTimeInterrogation (3GPP TS 29.002)
+//   RegisterPassword  opCode=17  MSC/VLR → HLR  (C-interface)
+//   GetPassword       opCode=18  MSC/VLR → HLR
+//   ATI               opCode=71  MSC/VLR → HLR  (anyTimeInfoEnquiryContext-v3)
+// ============================================================
+
+// ──────────────────────────────────────────────────────────────
+// MAP RegisterPassword — 3GPP TS 29.002 §14.7.1,  opCode=17
+// RegisterPassword-Arg ::= SS-Code  (just the OCTET STRING, no SEQUENCE wrapper)
+// AC: supplementaryServiceContext-v3 {0.4.0.0.1.0.50.3}
+// ──────────────────────────────────────────────────────────────
+static struct msgb *generate_map_register_password(uint8_t ss_code) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "MAP RegisterPassword");
+    if (!msg) return nullptr;
+
+    uint8_t arg[4]; uint8_t arg_len = (uint8_t)ber_tlv(arg, 0x04, &ss_code, 1);
+    static const uint8_t ss_ac_oid[] = { 0x04, 0x00, 0x00, 0x01, 0x00, 0x32, 0x03 };
+    static uint32_t rpw_tid = 0x00001600;
+    uint8_t pdu[200]; uint8_t pdu_len = build_tcap_begin(pdu, rpw_tid++, ss_ac_oid, sizeof(ss_ac_oid),
+                                                          0x01, 17 /*RegisterPassword*/, arg, arg_len);
+    memcpy(msgb_put(msg, pdu_len), pdu, pdu_len);
+
+    std::cout << COLOR_CYAN << "✓ Сгенерировано MAP RegisterPassword" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  SS-Code:  " << COLOR_GREEN << "0x" << std::hex << std::uppercase
+              << (int)ss_code << std::dec << " (" << ss_name(ss_code) << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  OpCode:   " << COLOR_GREEN << "17 (0x11) RegisterPassword" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер:   " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex MAP RegisterPassword:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────
+// MAP GetPassword — 3GPP TS 29.002 §14.7.2,  opCode=18
+// GetPassword-Arg ::= GuidanceInfo ::= ENUMERATED
+//   0=enterPW  1=enterNewPW  2=enterNewPW-Again
+// Encoded as: 0x0A 0x01 guidance_value
+// AC: supplementaryServiceContext-v3
+// ──────────────────────────────────────────────────────────────
+static struct msgb *generate_map_get_password(uint8_t ss_code, uint8_t guidance) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "MAP GetPassword");
+    if (!msg) return nullptr;
+
+    // Arg = SS-Code OCTET-STRING + GuidanceInfo ENUMERATED
+    uint8_t ssc_ie[4]; uint8_t ssc_len = (uint8_t)ber_tlv(ssc_ie, 0x04, &ss_code, 1);
+    uint8_t gui_ie[4]; uint8_t gui_len = (uint8_t)ber_tlv(gui_ie, 0x0A, &guidance, 1);
+    uint8_t arg_body[12]; uint8_t ab_len = 0;
+    memcpy(arg_body, ssc_ie, ssc_len); ab_len += ssc_len;
+    memcpy(arg_body + ab_len, gui_ie, gui_len); ab_len += gui_len;
+    uint8_t arg[16]; uint8_t arg_len = (uint8_t)ber_tlv(arg, 0x30, arg_body, ab_len);
+    static const uint8_t ss_ac_oid[] = { 0x04, 0x00, 0x00, 0x01, 0x00, 0x32, 0x03 };
+    static uint32_t gpw_tid = 0x00001700;
+    uint8_t pdu[200]; uint8_t pdu_len = build_tcap_begin(pdu, gpw_tid++, ss_ac_oid, sizeof(ss_ac_oid),
+                                                          0x01, 18 /*GetPassword*/, arg, arg_len);
+    memcpy(msgb_put(msg, pdu_len), pdu, pdu_len);
+
+    static const char *guidance_str[] = { "enterPW", "enterNewPW", "enterNewPW-Again", "?" };
+    std::cout << COLOR_CYAN << "✓ Сгенерировано MAP GetPassword" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  SS-Code:  " << COLOR_GREEN << "0x" << std::hex << std::uppercase
+              << (int)ss_code << std::dec << " (" << ss_name(ss_code) << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Guidance: " << COLOR_GREEN << (int)guidance
+              << " (" << guidance_str[guidance < 3 ? guidance : 3] << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  OpCode:   " << COLOR_GREEN << "18 (0x12) GetPassword" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер:   " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex MAP GetPassword:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// ──────────────────────────────────────────────────────────────
+// MAP AnyTimeInterrogation (ATI) — 3GPP TS 29.002 §7.3.3, opCode=71 (0x47)
+// Направление: MSC/VLR → HLR  (C-interface)
+// AC: anyTimeInfoEnquiryContext-v3 = {0.4.0.0.1.0.29.3}
+//   BER OID: 04 00 00 01 00 1D 03
+//
+// ATI-RequestArg ::= SEQUENCE {
+//   subscriberIdentity  SubscriberIdentity   -- CHOICE: [1] IMPLICIT msisdn
+//   requestedInfo       RequestedInfo        -- SEQUENCE { [0] NULL } = location
+// }
+// MSISDN [1] IMPLICIT ISDN-AddressString: tag=0x81 + TON(0x91) + BCD
+// RequestedInfo: 0x30 0x02 0x80 0x00
+// ──────────────────────────────────────────────────────────────
+static struct msgb *generate_map_ati(const char *msisdn_str) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "MAP ATI");
+    if (!msg) return nullptr;
+
+    // subscriberIdentity: [1] IMPLICIT ISDN-AddressString (msisdn)
+    uint8_t bcd[12]; uint8_t bcd_len = 1;
+    bcd[0] = 0x91;  // TON=international, NPI=E.164
+    size_t nlen = strlen(msisdn_str);
+    for (size_t i = 0; i < nlen && bcd_len < 11; i += 2) {
+        uint8_t lo = (uint8_t)(msisdn_str[i] - '0');
+        uint8_t hi = (i + 1 < nlen) ? (uint8_t)(msisdn_str[i+1] - '0') : 0x0F;
+        bcd[bcd_len++] = (uint8_t)((hi << 4) | lo);
+    }
+    uint8_t sub_ie[14]; uint8_t sub_len = (uint8_t)ber_tlv(sub_ie, 0x81, bcd, bcd_len);
+
+    // requestedInfo: SEQUENCE { locationInformation [0] NULL }
+    static const uint8_t req_info[] = { 0x30, 0x02, 0x80, 0x00 };
+
+    uint8_t seq_body[32]; uint8_t sq_len = 0;
+    memcpy(seq_body, sub_ie, sub_len); sq_len += sub_len;
+    memcpy(seq_body + sq_len, req_info, sizeof(req_info)); sq_len += (uint8_t)sizeof(req_info);
+    uint8_t arg[40]; uint8_t arg_len = (uint8_t)ber_tlv(arg, 0x30, seq_body, sq_len);
+
+    static const uint8_t ati_ac_oid[] = { 0x04, 0x00, 0x00, 0x01, 0x00, 0x1D, 0x03 };
+    static uint32_t ati_tid = 0x00001800;
+    uint8_t pdu[300]; uint8_t pdu_len = build_tcap_begin(pdu, ati_tid++, ati_ac_oid, sizeof(ati_ac_oid),
+                                                          0x01, 71 /*ATI opCode=0x47*/, arg, arg_len);
+    memcpy(msgb_put(msg, pdu_len), pdu, pdu_len);
+
+    std::cout << COLOR_CYAN << "✓ Сгенерировано MAP AnyTimeInterrogation (ATI)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MSISDN:  " << COLOR_GREEN << msisdn_str << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  ReqInfo: " << COLOR_GREEN << "locationInformation" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  OpCode:  " << COLOR_GREEN << "71 (0x47) anyTimeInterrogation" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  AC OID:  " << COLOR_GREEN << "anyTimeInfoEnquiryContext-v3 {0.4.0.0.1.0.29.3}" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Размер:  " << COLOR_GREEN << msg->len << " байт" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex MAP ATI:" << COLOR_RESET << "\n    ";
     for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); if ((i+1)%16==0) std::cout << "\n    "; }
     std::cout << "\n\n";
     return msg;
@@ -5597,6 +5826,17 @@ int main(int argc, char** argv) {
     bool     do_map_interrogate_ss = false;  // InterrogateSS opCode=14  (C-interface, MSC→HLR)
     uint8_t  ss_code_param         = 0x21;   // --ss-code: default 0x21=CFU
     std::string ss_fwd_num_param   = "";     // --ss-fwd-num: ForwardedToNumber (RegisterSS)
+    // P20: ISUP CGB/CGU/CGBA/CGUA + MAP RegisterPassword/GetPassword/ATI
+    bool     do_isup_cgb            = false; // ISUP CGB  Circuit Group Blocking   MT=0x18
+    bool     do_isup_cgu            = false; // ISUP CGU  Circuit Group Unblocking MT=0x19
+    bool     do_isup_cgba           = false; // ISUP CGBA CGB Acknowledgement      MT=0x1A
+    bool     do_isup_cgua           = false; // ISUP CGUA CGU Acknowledgement      MT=0x1B
+    uint8_t  cg_cause_param         = 0;     // --cg-cause: 0=maintenance 1=hardware failure
+    bool     do_map_register_pw     = false; // MAP RegisterPassword  opCode=17
+    bool     do_map_get_pw          = false; // MAP GetPassword       opCode=18
+    bool     do_map_ati             = false; // MAP AnyTimeInterrogation opCode=71
+    uint8_t  pw_guidance_param      = 0;     // --pw-guidance: 0=enterPW 1=enterNewPW 2=enterNewPW-Again
+    std::string ati_msisdn_param    = "";    // --ati-msisdn (empty = use msisdn from config)
     // P6: A-interface DTAP/BSSMAP — аутентификация, шифрование, LU accept/reject
     bool     do_dtap_auth_req   = false;  // DTAP Authentication Request  MM 0x12
     bool     do_dtap_auth_resp  = false;  // DTAP Authentication Response MM 0x14
@@ -6358,6 +6598,44 @@ int main(int argc, char** argv) {
         else if (arg == "--send-m3ua-beat-ack") {
             do_m3ua_beat_ack = true;
             do_lu = false;  do_paging = false;
+        }
+        // ── P20: ISUP Circuit Group + MAP Password/ATI ────────────────────────────────
+        else if (arg == "--send-isup-cgb") {
+            do_isup_cgb = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-isup-cgu") {
+            do_isup_cgu = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-isup-cgba") {
+            do_isup_cgba = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-isup-cgua") {
+            do_isup_cgua = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--cg-cause" && i + 1 < argc) {
+            cg_cause_param = (uint8_t)std::stoul(argv[++i], nullptr, 0);
+        }
+        else if (arg == "--send-map-register-pw") {
+            do_map_register_pw = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-map-get-pw") {
+            do_map_get_pw = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--pw-guidance" && i + 1 < argc) {
+            pw_guidance_param = (uint8_t)std::stoul(argv[++i], nullptr, 0);
+        }
+        else if (arg == "--send-map-ati") {
+            do_map_ati = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--ati-msisdn" && i + 1 < argc) {
+            ati_msisdn_param = argv[++i];
         }
         // P6: A-interface DTAP/BSSMAP
         else if (arg == "--send-dtap-auth-req") {
@@ -7948,6 +8226,24 @@ int main(int argc, char** argv) {
         send_ss_via_c(generate_map_interrogate_ss(ss_code_param));
     }
 
+    // ── P20: MAP Password + AnyTimeInterrogation ────────────────────────────────
+    if (do_map_register_pw) {
+        print_section_header("[MAP RegisterPassword]", "C-interface  (MSC/VLR \xe2\x86\x92 HLR, opCode=17)");
+        std::cout << "\n";
+        send_ss_via_c(generate_map_register_password(ss_code_param));
+    }
+    if (do_map_get_pw) {
+        print_section_header("[MAP GetPassword]", "C-interface  (MSC/VLR \xe2\x86\x92 HLR, opCode=18)");
+        std::cout << "\n";
+        send_ss_via_c(generate_map_get_password(ss_code_param, pw_guidance_param));
+    }
+    if (do_map_ati) {
+        print_section_header("[MAP ATI]", "C-interface  (MSC/VLR \xe2\x86\x92 HLR, opCode=71)");
+        std::cout << "\n";
+        const std::string &ati_ms = ati_msisdn_param.empty() ? msisdn : ati_msisdn_param;
+        send_ss_via_c(generate_map_ati(ati_ms.c_str()));
+    }
+
     // ── ISUP IAM (Initial Address Message) ───────────────────────────────────
     if (do_isup_iam) {
         print_section_header("[ISUP IAM]", "ISUP-interface  (вызов к PSTN/GW, без SCCP)");
@@ -8414,6 +8710,78 @@ int main(int argc, char** argv) {
             } else if (send_udp) {
                 std::cerr << COLOR_YELLOW << "⚠ ISUP-interface: remote_ip не задан\n" << COLOR_RESET;
             }
+            msgb_free(isup_msg);
+        }
+    }
+
+    // ── P20: ISUP CGB (Circuit Group Blocking) ───────────────────────────────
+    if (do_isup_cgb) {
+        print_section_header("[ISUP CGB]", "ISUP-interface  (Circuit Group Blocking, MT=0x18)");
+        std::cout << "\n";
+        uint32_t isup_opc = (isup_m3ua_ni == 0) ? isup_opc_ni0 : isup_opc_ni2;
+        uint32_t isup_dpc = (isup_m3ua_ni == 0) ? isup_dpc_ni0 : isup_dpc_ni2;
+        struct msgb *isup_msg = generate_isup_cgb(cic_param, grs_range_param, cg_cause_param);
+        if (isup_msg) {
+            if (send_udp && !isup_remote_ip.empty()) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(isup_msg, isup_opc, isup_dpc,
+                                                     isup_m3ua_ni, isup_si, mp,
+                                                     (uint8_t)(cic_param & 0xFF));
+                if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, isup_remote_ip.c_str(), isup_remote_port); msgb_free(m3ua_msg); }
+            } else if (send_udp) { std::cerr << COLOR_YELLOW << "⚠ ISUP-interface: remote_ip не задан\n" << COLOR_RESET; }
+            msgb_free(isup_msg);
+        }
+    }
+
+    // ── P20: ISUP CGU (Circuit Group Unblocking) ─────────────────────────────
+    if (do_isup_cgu) {
+        print_section_header("[ISUP CGU]", "ISUP-interface  (Circuit Group Unblocking, MT=0x19)");
+        std::cout << "\n";
+        uint32_t isup_opc = (isup_m3ua_ni == 0) ? isup_opc_ni0 : isup_opc_ni2;
+        uint32_t isup_dpc = (isup_m3ua_ni == 0) ? isup_dpc_ni0 : isup_dpc_ni2;
+        struct msgb *isup_msg = generate_isup_cgu(cic_param, grs_range_param, cg_cause_param);
+        if (isup_msg) {
+            if (send_udp && !isup_remote_ip.empty()) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(isup_msg, isup_opc, isup_dpc,
+                                                     isup_m3ua_ni, isup_si, mp,
+                                                     (uint8_t)(cic_param & 0xFF));
+                if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, isup_remote_ip.c_str(), isup_remote_port); msgb_free(m3ua_msg); }
+            } else if (send_udp) { std::cerr << COLOR_YELLOW << "⚠ ISUP-interface: remote_ip не задан\n" << COLOR_RESET; }
+            msgb_free(isup_msg);
+        }
+    }
+
+    // ── P20: ISUP CGBA (CGB Acknowledgement) ─────────────────────────────────
+    if (do_isup_cgba) {
+        print_section_header("[ISUP CGBA]", "ISUP-interface  (CGB Acknowledgement, MT=0x1A)");
+        std::cout << "\n";
+        uint32_t isup_opc = (isup_m3ua_ni == 0) ? isup_opc_ni0 : isup_opc_ni2;
+        uint32_t isup_dpc = (isup_m3ua_ni == 0) ? isup_dpc_ni0 : isup_dpc_ni2;
+        struct msgb *isup_msg = generate_isup_cgba(cic_param, grs_range_param, cg_cause_param);
+        if (isup_msg) {
+            if (send_udp && !isup_remote_ip.empty()) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(isup_msg, isup_opc, isup_dpc,
+                                                     isup_m3ua_ni, isup_si, mp,
+                                                     (uint8_t)(cic_param & 0xFF));
+                if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, isup_remote_ip.c_str(), isup_remote_port); msgb_free(m3ua_msg); }
+            } else if (send_udp) { std::cerr << COLOR_YELLOW << "⚠ ISUP-interface: remote_ip не задан\n" << COLOR_RESET; }
+            msgb_free(isup_msg);
+        }
+    }
+
+    // ── P20: ISUP CGUA (CGU Acknowledgement) ─────────────────────────────────
+    if (do_isup_cgua) {
+        print_section_header("[ISUP CGUA]", "ISUP-interface  (CGU Acknowledgement, MT=0x1B)");
+        std::cout << "\n";
+        uint32_t isup_opc = (isup_m3ua_ni == 0) ? isup_opc_ni0 : isup_opc_ni2;
+        uint32_t isup_dpc = (isup_m3ua_ni == 0) ? isup_dpc_ni0 : isup_dpc_ni2;
+        struct msgb *isup_msg = generate_isup_cgua(cic_param, grs_range_param, cg_cause_param);
+        if (isup_msg) {
+            if (send_udp && !isup_remote_ip.empty()) {
+                struct msgb *m3ua_msg = wrap_in_m3ua(isup_msg, isup_opc, isup_dpc,
+                                                     isup_m3ua_ni, isup_si, mp,
+                                                     (uint8_t)(cic_param & 0xFF));
+                if (m3ua_msg) { send_message_udp(m3ua_msg->data, m3ua_msg->len, isup_remote_ip.c_str(), isup_remote_port); msgb_free(m3ua_msg); }
+            } else if (send_udp) { std::cerr << COLOR_YELLOW << "⚠ ISUP-interface: remote_ip не задан\n" << COLOR_RESET; }
             msgb_free(isup_msg);
         }
     }
