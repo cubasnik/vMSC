@@ -12984,6 +12984,7 @@ int main(int argc, char** argv) {
             do_lu = false; do_paging = false;
         }
         else if (arg == "--show-alarms") {
+            if (show_all) { show_all = false; }
             show_alarms = true;
             do_lu = false; do_paging = false;
         }
@@ -14114,15 +14115,17 @@ int main(int argc, char** argv) {
         }
     }
 
-    std::cout << "vMSC инициализирован\n";
-    if (!loaded_configs.empty()) {
-        std::cout << COLOR_GREEN;
-        for (const auto &p : loaded_configs)
-            std::cout << "✓ Конфигурация загружена из " << p << "\n";
-        std::cout << COLOR_RESET;
+    if (!show_alarms) {
+        std::cout << "vMSC инициализирован\n";
+        if (!loaded_configs.empty()) {
+            std::cout << COLOR_GREEN;
+            for (const auto &p : loaded_configs)
+                std::cout << "✓ Конфигурация загружена из " << p << "\n";
+            std::cout << COLOR_RESET;
+        }
+        std::cout << "\n";
+        std::cout << COLOR_MAGENTA << "=== Параметры генерации ===" << COLOR_RESET << "\n\n";
     }
-    std::cout << "\n";
-    std::cout << COLOR_MAGENTA << "=== Параметры генерации ===" << COLOR_RESET << "\n\n";
 
     // Заголовок секции: жирный, по центру, с разделителями
     auto print_section_header = [](const std::string &name, const std::string &comment = "") {
