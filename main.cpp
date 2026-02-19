@@ -2209,6 +2209,131 @@ static struct msgb *generate_bssap_plus_reset_ack() {
 }
 
 // ============================================================
+// P21: Gs-interface BSSAP+ SMS-related messages (3GPP TS 29.018 §9.2)
+//
+// READY-FOR-SM   msgType=0x0E  SGSN→MSC — MS ready to receive SM
+//   IEs: IMSI (tag=0x01), Alert-Reason (tag=0x0D): 0=MS-Present, 1=MemCapExceeded
+//
+// ALERT-REQUEST  msgType=0x0F  MSC→SGSN — alert MSC when MS available
+//   IEs: IMSI (tag=0x01)
+//
+// ALERT-ACKNOWLEDGE msgType=0x10  SGSN→MSC — MS now available
+//   No IEs
+//
+// ALERT-REJECT   msgType=0x11  SGSN→MSC — alert rejected
+//   IEs: Cause (tag=0x09): 0x01=IMSI-detached, 0x03=unidentified-subscriber
+// ============================================================
+
+// Inline IMSI BCD helper (shared pattern with paging/detach generators)
+static uint8_t bssap_encode_imsi(const char *imsi_str, uint8_t *bcd_out) {
+    size_t slen = strlen(imsi_str);
+    bcd_out[0] = (uint8_t)(((imsi_str[0] - '0') << 4) | 0x09);  // identity digit1 + IMSI type
+    uint8_t bcd_len = 1;
+    for (size_t i = 1; i < slen && bcd_len < 9; i += 2) {
+        uint8_t lo = (uint8_t)(imsi_str[i] - '0');
+        uint8_t hi = (i + 1 < slen) ? (uint8_t)(imsi_str[i + 1] - '0') : 0x0F;
+        bcd_out[bcd_len++] = (uint8_t)((hi << 4) | lo);
+    }
+    return bcd_len;
+}
+
+// BSSAP+ READY-FOR-SM (3GPP TS 29.018 §9.2.14)
+// SGSN → MSC  msgType=0x0E — MS is ready to receive short message
+static struct msgb *generate_bssap_plus_ready_for_sm(const char *imsi_str, uint8_t alert_reason) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSAP+ ReadyForSM");
+    if (!msg) return nullptr;
+
+    *(msgb_put(msg, 1)) = 0x00;  // BSSAP+ discriminator
+    *(msgb_put(msg, 1)) = 0x0E;  // READY-FOR-SM
+
+    // IMSI IE: tag=0x01
+    uint8_t bcd[9];
+    uint8_t bcd_len = bssap_encode_imsi(imsi_str, bcd);
+    uint8_t *ie = msgb_put(msg, 2 + bcd_len);
+    ie[0] = 0x01;  ie[1] = bcd_len;
+    memcpy(ie + 2, bcd, bcd_len);
+
+    // Alert-Reason IE: tag=0x0D, len=1
+    *(msgb_put(msg, 1)) = 0x0D;
+    *(msgb_put(msg, 1)) = 0x01;
+    *(msgb_put(msg, 1)) = alert_reason & 0x01;
+
+    const char *ar_str = (alert_reason == 0) ? "MS-Present" : "Memory-Capacity-Exceeded";
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e BSSAP+ Ready-For-SM" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  IMSI:         " << COLOR_GREEN << imsi_str << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Alert-Reason: " << COLOR_GREEN << (int)alert_reason
+              << " (" << ar_str << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MsgType:      " << COLOR_GREEN << "0x0E READY-FOR-SM" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440:      " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex READY-FOR-SM:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// BSSAP+ ALERT-REQUEST (3GPP TS 29.018 §9.2.10)
+// MSC → SGSN  msgType=0x0F — request notification when MS becomes available
+// Triggers the Alert-SC procedure (MSC→SMSC MAP alertServiceCentre)
+static struct msgb *generate_bssap_plus_alert_sc(const char *imsi_str) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSAP+ AlertSC");
+    if (!msg) return nullptr;
+
+    *(msgb_put(msg, 1)) = 0x00;  // BSSAP+ discriminator
+    *(msgb_put(msg, 1)) = 0x0F;  // ALERT-REQUEST
+
+    // IMSI IE: tag=0x01
+    uint8_t bcd[9];
+    uint8_t bcd_len = bssap_encode_imsi(imsi_str, bcd);
+    uint8_t *ie = msgb_put(msg, 2 + bcd_len);
+    ie[0] = 0x01;  ie[1] = bcd_len;
+    memcpy(ie + 2, bcd, bcd_len);
+
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e BSSAP+ Alert-Request (Alert-SC)" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  IMSI:    " << COLOR_GREEN << imsi_str << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MsgType: " << COLOR_GREEN << "0x0F ALERT-REQUEST" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    std::cout << COLOR_YELLOW << "Raw hex ALERT-REQUEST:" << COLOR_RESET << "\n    ";
+    for (int i = 0; i < msg->len; ++i) { printf("%02x ", msg->data[i]); }
+    std::cout << "\n\n";
+    return msg;
+}
+
+// BSSAP+ ALERT-ACKNOWLEDGE (3GPP TS 29.018 §9.2.11)
+// SGSN → MSC  msgType=0x10 — MS is now available (no IEs)
+static struct msgb *generate_bssap_plus_alert_ack() {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSAP+ AlertAck");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = 0x00;  // BSSAP+ discriminator
+    *(msgb_put(msg, 1)) = 0x10;  // ALERT-ACKNOWLEDGE
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e BSSAP+ Alert-Acknowledge" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MsgType: " << COLOR_GREEN << "0x10 ALERT-ACKNOWLEDGE" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// BSSAP+ ALERT-REJECT (3GPP TS 29.018 §9.2.12)
+// SGSN → MSC  msgType=0x11 — alert rejected
+// Cause IE (tag=0x09, 1 byte): 0x01=IMSI-detached 0x03=unidentified-subscriber
+static struct msgb *generate_bssap_plus_alert_reject(uint8_t cause) {
+    struct msgb *msg = msgb_alloc_headroom(512, 128, "BSSAP+ AlertReject");
+    if (!msg) return nullptr;
+    *(msgb_put(msg, 1)) = 0x00;  // BSSAP+ discriminator
+    *(msgb_put(msg, 1)) = 0x11;  // ALERT-REJECT
+    *(msgb_put(msg, 1)) = 0x09;  // Cause IE tag
+    *(msgb_put(msg, 1)) = 0x01;  // Cause IE length
+    *(msgb_put(msg, 1)) = cause;
+    const char *c_str = (cause == 0x01) ? "IMSI-detached"
+                      : (cause == 0x03) ? "unidentified-subscriber"
+                      : (cause == 0x0F) ? "MSC-not-reachable" : "unknown";
+    std::cout << COLOR_CYAN << "\u2713 \u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e BSSAP+ Alert-Reject" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  Cause:   " << COLOR_GREEN << "0x" << std::hex << (int)cause
+              << std::dec << " (" << c_str << ")" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  MsgType: " << COLOR_GREEN << "0x11 ALERT-REJECT" << COLOR_RESET << "\n";
+    std::cout << COLOR_BLUE << "  \u0420\u0430\u0437\u043c\u0435\u0440: " << COLOR_GREEN << msg->len << " \u0431\u0430\u0439\u0442" << COLOR_RESET << "\n\n";
+    return msg;
+}
+
+// ============================================================
 // ──────────────────────────────────────────────────────────────
 // TCAP/MAP диалог: вспомогательные функции
 // ──────────────────────────────────────────────────────────────
@@ -5747,6 +5872,13 @@ int main(int argc, char** argv) {
     uint8_t  gs_reset_cause  = 0;      // --gs-reset-cause: 0=power-on 1=om 2=load
     uint8_t  gs_detach_type  = 0;      // --gs-detach-type: 0=power-off 1=reattach 2=gprs
     std::string gs_peer_number = "";   // --gs-peer-number: E.164 VLR/SGSN number
+    // P21: Gs-interface BSSAP+ SMS-related (3GPP TS 29.018)
+    bool do_gs_ready_for_sm  = false;  // BSSAP+ Ready-For-SM    0x0E  SGSN→MSC
+    bool do_gs_alert_sc      = false;  // BSSAP+ Alert-Request   0x0F  MSC→SGSN
+    bool do_gs_alert_ack     = false;  // BSSAP+ Alert-Ack       0x10  SGSN→MSC
+    bool do_gs_alert_reject  = false;  // BSSAP+ Alert-Reject    0x11  SGSN→MSC
+    uint8_t  gs_alert_reason = 0;      // --gs-alert-reason: 0=MS-Present 1=MemCapExceeded
+    uint8_t  gs_alert_cause  = 0x01;   // --gs-alert-cause: 0x01=IMSI-detached 0x03=unknown-sub
     // TCAP диалог: завершение и промежуточные шаги
     bool do_tcap_end         = false;  // TCAP End (ack, нет компонентов)     (C-interface)
     bool do_tcap_continue    = false;  // TCAP Continue (keepalive)            (C-interface)
@@ -6328,6 +6460,25 @@ int main(int argc, char** argv) {
         else if (arg == "--gs-reset-cause" && i+1 < argc) gs_reset_cause = (uint8_t)std::stoul(argv[++i], nullptr, 0);
         else if (arg == "--gs-detach-type" && i+1 < argc) gs_detach_type = (uint8_t)std::stoul(argv[++i], nullptr, 0);
         else if (arg == "--gs-peer-number" && i+1 < argc) gs_peer_number = argv[++i];
+        // ── P21: Gs BSSAP+ SMS-related ────────────────────────────────
+        else if (arg == "--send-gs-ready-for-sm") {
+            do_gs_ready_for_sm = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-gs-alert-sc") {
+            do_gs_alert_sc = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-gs-alert-ack") {
+            do_gs_alert_ack = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--send-gs-alert-reject") {
+            do_gs_alert_reject = true;
+            do_lu = false;  do_paging = false;
+        }
+        else if (arg == "--gs-alert-reason" && i+1 < argc) gs_alert_reason = (uint8_t)std::stoul(argv[++i], nullptr, 0);
+        else if (arg == "--gs-alert-cause" && i+1 < argc)  gs_alert_cause  = (uint8_t)std::stoul(argv[++i], nullptr, 0);
         // ── TCAP диалог: завершение и промежуточные шаги ────────────
         else if (arg == "--dtid" && i+1 < argc) {
             // Принимаем decimal или hex (0x...)
@@ -7748,6 +7899,23 @@ int main(int argc, char** argv) {
     if (do_gs_reset_ack)
         send_gs(generate_bssap_plus_reset_ack(),
                 "[BSSAP+ Reset Acknowledge]", "Gs-interface  SGSN → MSC");
+
+    // ── P21: Gs-interface BSSAP+ SMS-related ─────────────────────────────────
+    if (do_gs_ready_for_sm)
+        send_gs(generate_bssap_plus_ready_for_sm(imsi.c_str(), gs_alert_reason),
+                "[BSSAP+ Ready-For-SM]", "Gs-interface  SGSN → MSC  (0x0E)");
+
+    if (do_gs_alert_sc)
+        send_gs(generate_bssap_plus_alert_sc(imsi.c_str()),
+                "[BSSAP+ Alert-SC]", "Gs-interface  MSC → SGSN  (0x0F)");
+
+    if (do_gs_alert_ack)
+        send_gs(generate_bssap_plus_alert_ack(),
+                "[BSSAP+ Alert-Acknowledge]", "Gs-interface  SGSN → MSC  (0x10)");
+
+    if (do_gs_alert_reject)
+        send_gs(generate_bssap_plus_alert_reject(gs_alert_cause),
+                "[BSSAP+ Alert-Reject]", "Gs-interface  SGSN → MSC  (0x11)");
 
     // ── MAP SendRoutingInfo (SRI) ─────────────────────────────────────────────
     if (do_map_sri) {
