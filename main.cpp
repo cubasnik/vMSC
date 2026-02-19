@@ -66,6 +66,32 @@ struct VlrEntry {
     }
 };
 
+// ── CIC (Circuit Identification Code) — голосовые тракты ISUP ──────────────
+enum class CicState : uint8_t {
+    IDLE      = 0,  // свободен
+    ACTIVE    = 1,  // занят (активный вызов)
+    BLOCKED   = 2,  // заблокирован (BLO)
+    RESETTING = 3,  // в процессе RSC
+};
+
+struct CicEntry {
+    uint16_t    cic       = 0;
+    CicState    state     = CicState::IDLE;
+    std::string direction = "";   // "MO" / "MT" / ""
+    std::string timestamp = "";
+    std::string note      = "";
+
+    static std::string state_str(CicState s) {
+        switch (s) {
+            case CicState::IDLE:      return "IDLE";
+            case CicState::ACTIVE:    return "ACTIVE";
+            case CicState::BLOCKED:   return "BLOCKED";
+            case CicState::RESETTING: return "RESET";
+        }
+        return "?";
+    }
+};
+
 struct GtRoute {
     std::string prefix;       // E.164-префикс (например: 7916)
     std::string iface;        // интерфейс: a, c, f, e, nc, isup, gs
@@ -216,6 +242,9 @@ struct Config {
     std::string msrn_prefix      = "";   // Префикс пула (E.164, напр. "79161000")
     uint32_t    msrn_range_start = 100;  // Первый суффикс пула
     uint32_t    msrn_range_end   = 999;  // Последний суффикс пула
+    // CIC пул — диапазон голосовых трактов к PSTN/GW (ISUP-interface)
+    uint16_t    cic_range_start = 1;    // первый CIC в пуле
+    uint16_t    cic_range_end   = 30;   // последний CIC в пуле
 };
 
 // Загрузка конфигурации из файла
@@ -423,6 +452,9 @@ static bool load_config(const std::string &path, Config &cfg) {
             if      (key == "msrn_prefix")       cfg.msrn_prefix      = value;
             else if (key == "msrn_range_start") { try { cfg.msrn_range_start = std::stoul(value); } catch(...){} }
             else if (key == "msrn_range_end")   { try { cfg.msrn_range_end   = std::stoul(value); } catch(...){} }
+        } else if (section == "cic") {
+            if      (key == "cic_range_start") { try { cfg.cic_range_start = (uint16_t)std::stoul(value); } catch(...){} }
+            else if (key == "cic_range_end")   { try { cfg.cic_range_end   = (uint16_t)std::stoul(value); } catch(...){} }
         // Обратная совместимость со старым форматом
         } else if (section == "network") {
             if      (key == "mcc") cfg.mcc = std::stoi(value);
@@ -12600,6 +12632,13 @@ int main(int argc, char** argv) {
     bool vlr_register        = false;  // --vlr-register
     bool vlr_deregister      = false;  // --vlr-deregister
     bool vlr_clear           = false;  // --vlr-clear
+    bool show_cic            = false;  // --show-cic
+    bool cic_block_flag      = false;  // --cic-block
+    bool cic_unblock_flag    = false;  // --cic-unblock
+    bool cic_reset_flag      = false;  // --cic-reset
+    bool cic_active_flag     = false;  // --cic-active
+    bool cic_clear_flag      = false;  // --cic-clear
+    uint16_t cic_op_target   = 0;      // CIC для операции (0 = все/по умолч.)
 
     // Простой парсинг аргументов
     for (int i = 1; i < argc; ++i) {
@@ -12879,6 +12918,34 @@ int main(int argc, char** argv) {
         }
         else if (arg == "--vlr-clear") {
             vlr_clear = true;
+            do_lu = false; do_paging = false;
+        }
+        else if (arg == "--show-cic") {
+            show_cic = true;
+            do_lu = false; do_paging = false;
+        }
+        else if (arg == "--cic-block" && i+1 < argc) {
+            cic_op_target = (uint16_t)std::stoul(argv[++i]);
+            cic_block_flag = true;
+            do_lu = false; do_paging = false;
+        }
+        else if (arg == "--cic-unblock" && i+1 < argc) {
+            cic_op_target = (uint16_t)std::stoul(argv[++i]);
+            cic_unblock_flag = true;
+            do_lu = false; do_paging = false;
+        }
+        else if (arg == "--cic-reset" && i+1 < argc) {
+            cic_op_target = (uint16_t)std::stoul(argv[++i]);
+            cic_reset_flag = true;
+            do_lu = false; do_paging = false;
+        }
+        else if (arg == "--cic-active" && i+1 < argc) {
+            cic_op_target = (uint16_t)std::stoul(argv[++i]);
+            cic_active_flag = true;
+            do_lu = false; do_paging = false;
+        }
+        else if (arg == "--cic-clear") {
+            cic_clear_flag = true;
             do_lu = false; do_paging = false;
         }
         // ── C-интерфейс: MAP over SCCP UDT ──────────────────────────
@@ -14668,6 +14735,200 @@ int main(int argc, char** argv) {
                     [](const VlrEntry &x){ return x.state == VlrState::REGISTERED; });
                 std::cout << "\n  Итого: " << COLOR_GREEN << vlr_table.size() << COLOR_RESET
                           << " записей,  зарегистрировано: " << COLOR_GREEN << reg_cnt << COLOR_RESET << "\n";
+            }
+            std::cout << "\n";
+        }
+    }
+
+    // ── CIC: load, modify, display ───────────────────────────────────────────
+    {
+        // Путь к файлу CIC (рядом с vmsc.conf)
+        auto cic_path = [&]() -> std::string {
+            if (!config_path.empty()) {
+                std::string base = config_path;
+                size_t slash = base.find_last_of("/\\");
+                if (slash != std::string::npos) base = base.substr(0, slash + 1);
+                else base = "./";
+                return base + "vmsc_cic.conf";
+            }
+            return "./vmsc_cic.conf";
+        }();
+
+        std::vector<CicEntry> cic_table;
+
+        // Загрузка из файла
+        auto cic_load = [&]() {
+            cic_table.clear();
+            std::ifstream f(cic_path);
+            if (!f.is_open()) return;
+            std::string line;
+            CicEntry e;
+            bool in_entry = false;
+            while (std::getline(f, line)) {
+                line.erase(0, line.find_first_not_of(" \t\r\n"));
+                if (line.empty() || line[0] == '#') continue;
+                if (line[0] == '[') {
+                    if (in_entry && e.cic) cic_table.push_back(e);
+                    e = CicEntry{}; in_entry = true;
+                    continue;
+                }
+                size_t eq = line.find('=');
+                if (eq == std::string::npos) continue;
+                std::string k = line.substr(0, eq), v = line.substr(eq + 1);
+                k.erase(0, k.find_first_not_of(" \t")); k.erase(k.find_last_not_of(" \t") + 1);
+                v.erase(0, v.find_first_not_of(" \t")); v.erase(v.find_last_not_of(" \t") + 1);
+                if      (k == "cic")   { try { e.cic = (uint16_t)std::stoul(v); } catch(...){} }
+                else if (k == "state") { e.state = (v=="ACTIVE") ? CicState::ACTIVE :
+                                                   (v=="BLOCKED") ? CicState::BLOCKED :
+                                                   (v=="RESET")   ? CicState::RESETTING : CicState::IDLE; }
+                else if (k == "dir")   e.direction = v;
+                else if (k == "ts")    e.timestamp = v;
+                else if (k == "note")  e.note      = v;
+            }
+            if (in_entry && e.cic) cic_table.push_back(e);
+        };
+
+        // Сохранение в файл
+        auto cic_save = [&]() {
+            std::ofstream f(cic_path);
+            if (!f.is_open()) return;
+            f << "# vMSC CIC Table — автоматически создан\n";
+            for (const auto &e : cic_table) {
+                f << "[cic]\ncic=" << e.cic << "\n";
+                f << "state=" << CicEntry::state_str(e.state) << "\n";
+                if (!e.direction.empty()) f << "dir=" << e.direction << "\n";
+                if (!e.timestamp.empty()) f << "ts=" << e.timestamp << "\n";
+                if (!e.note.empty())      f << "note=" << e.note << "\n";
+            }
+        };
+
+        // Текущее время
+        auto now_str = []() -> std::string {
+            time_t t = time(nullptr);
+            struct tm tm_buf{}; localtime_r(&t, &tm_buf);
+            char buf[32]; strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_buf);
+            return std::string(buf);
+        };
+
+        // Инициализация пула — если файла нет, заполняем IDLE от cic_range_start до cic_range_end
+        cic_load();
+        if (cic_table.empty() && cfg.cic_range_start <= cfg.cic_range_end) {
+            for (uint16_t c = cfg.cic_range_start; c <= cfg.cic_range_end; ++c) {
+                CicEntry e;
+                e.cic   = c;
+                e.state = CicState::IDLE;
+                cic_table.push_back(e);
+            }
+        }
+
+        // Вспомогательная функция — найти/добавить запись
+        auto cic_find = [&](uint16_t c) -> CicEntry * {
+            for (auto &e : cic_table) if (e.cic == c) return &e;
+            cic_table.push_back(CicEntry{c, CicState::IDLE});
+            return &cic_table.back();
+        };
+
+        // ── --cic-clear ────────────────────────────────────────────────────
+        if (cic_clear_flag) {
+            // Сбросить все в IDLE, не удалять записи
+            for (auto &e : cic_table) { e.state = CicState::IDLE; e.direction = ""; e.note = ""; }
+            cic_save();
+            std::cout << COLOR_CYAN << "  CIC таблица сброшена (все IDLE)\n" << COLOR_RESET;
+        }
+
+        // ── --cic-block <N> ────────────────────────────────────────────────
+        if (cic_block_flag && cic_op_target) {
+            auto *e = cic_find(cic_op_target);
+            e->state = CicState::BLOCKED; e->timestamp = now_str();
+            cic_save();
+            std::cout << COLOR_YELLOW << "  BLO  CIC " << cic_op_target << "  → BLOCKED\n" << COLOR_RESET;
+        }
+
+        // ── --cic-unblock <N> ──────────────────────────────────────────────
+        if (cic_unblock_flag && cic_op_target) {
+            auto *e = cic_find(cic_op_target);
+            e->state = CicState::IDLE; e->timestamp = now_str();
+            cic_save();
+            std::cout << COLOR_GREEN << "  UBL  CIC " << cic_op_target << "  → IDLE\n" << COLOR_RESET;
+        }
+
+        // ── --cic-reset <N> ────────────────────────────────────────────────
+        if (cic_reset_flag && cic_op_target) {
+            auto *e = cic_find(cic_op_target);
+            e->state = CicState::RESETTING; e->timestamp = now_str();
+            cic_save();
+            std::cout << COLOR_CYAN << "  RSC  CIC " << cic_op_target << "  → RESETTING\n" << COLOR_RESET;
+        }
+
+        // ── --cic-active <N> ───────────────────────────────────────────────
+        if (cic_active_flag && cic_op_target) {
+            auto *e = cic_find(cic_op_target);
+            e->state = CicState::ACTIVE; e->timestamp = now_str();
+            cic_save();
+            std::cout << COLOR_GREEN << "  IAM  CIC " << cic_op_target << "  → ACTIVE\n" << COLOR_RESET;
+        }
+
+        // ── --show-cic ─────────────────────────────────────────────────────
+        if (show_cic) {
+            print_section_header("[CIC]", "Голосовые тракты ISUP-interface  (MSC ↔ PSTN/GW)");
+
+            // Статистика
+            int n_idle = 0, n_active = 0, n_blocked = 0, n_reset = 0;
+            for (const auto &e : cic_table) {
+                if      (e.state == CicState::IDLE)      ++n_idle;
+                else if (e.state == CicState::ACTIVE)    ++n_active;
+                else if (e.state == CicState::BLOCKED)   ++n_blocked;
+                else if (e.state == CicState::RESETTING) ++n_reset;
+            }
+            int total = (int)cic_table.size();
+            std::cout << "  Пул: CIC " << COLOR_GREEN << cfg.cic_range_start << COLOR_RESET
+                      << " … " << COLOR_GREEN << cfg.cic_range_end << COLOR_RESET
+                      << "  (" << total << " каналов)"
+                      << "  Занято: " << COLOR_GREEN << n_active << COLOR_RESET
+                      << "  Свободно: " << COLOR_GREEN << n_idle << COLOR_RESET
+                      << "  Заблок: " << COLOR_YELLOW << n_blocked << COLOR_RESET;
+            if (n_reset) std::cout << "  RSC: " << COLOR_CYAN << n_reset << COLOR_RESET;
+            std::cout << "\n\n";
+
+            // ISUP-interface реквизиты
+            std::cout << "  PSTN/GW: ";
+            if (!cfg.isup_remote_spid.empty()) std::cout << COLOR_GREEN << cfg.isup_remote_spid << COLOR_RESET << "  ";
+            uint32_t active_dpc = (cfg.isup_m3ua_ni == 0) ? cfg.isup_dpc_ni0 :
+                                  (cfg.isup_m3ua_ni == 2) ? cfg.isup_dpc_ni2 : cfg.isup_dpc_ni0;
+            if (active_dpc) std::cout << "DPC=" << active_dpc;
+            std::cout << "\n\n";
+
+            // Заголовок таблицы
+            auto padR = [](const std::string &s, int w) -> std::string {
+                return s.size() < (size_t)w ? s + std::string(w - s.size(), ' ') : s.substr(0, w);
+            };
+
+            if (cic_table.empty()) {
+                std::cout << "  " << COLOR_YELLOW << "(таблица пуста — укажите cic_range_start/end в [cic])\n" << COLOR_RESET;
+            } else {
+                // Вывод построчно в сетке 4 колонки
+                const int COLS = 4;
+                std::cout << "  ";
+                for (int col = 0; col < COLS; ++col)
+                    std::cout << COLOR_CYAN << padR("CIC",5) << padR("STATE  ",9) << COLOR_RESET << "  ";
+                std::cout << "\n  " << std::string(62, '-') << "\n";
+
+                int idx = 0;
+                for (const auto &e : cic_table) {
+                    const char *sc =
+                        (e.state == CicState::IDLE)      ? COLOR_GREEN  :
+                        (e.state == CicState::ACTIVE)    ? COLOR_CYAN   :
+                        (e.state == CicState::BLOCKED)   ? COLOR_YELLOW :
+                        (e.state == CicState::RESETTING) ? COLOR_CYAN   : COLOR_RESET;
+                    std::ostringstream cell;
+                    cell << COLOR_GREEN << padR(std::to_string(e.cic), 5) << COLOR_RESET
+                         << sc << padR(CicEntry::state_str(e.state), 9) << COLOR_RESET;
+                    if ((idx % COLS) == 0) std::cout << "  ";
+                    std::cout << cell.str() << "  ";
+                    if ((idx % COLS) == COLS - 1) std::cout << "\n";
+                    ++idx;
+                }
+                if (idx % COLS != 0) std::cout << "\n";
             }
             std::cout << "\n";
         }
